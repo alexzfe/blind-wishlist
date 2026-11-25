@@ -28,8 +28,8 @@ All settings are optional environment variables.
 
 ### A Linux server (VPS) with systemd
 
-1. Copy this folder to the server, for example `/opt/wishlists`.
-2. Create `/etc/systemd/system/wishlists.service`:
+1. Copy this folder to the server, for example `/opt/christmaswishlist`.
+2. Create `/etc/systemd/system/christmaswishlist.service`:
 
    ```ini
    [Unit]
@@ -37,7 +37,7 @@ All settings are optional environment variables.
    After=network.target
 
    [Service]
-   WorkingDirectory=/opt/wishlists
+   WorkingDirectory=/opt/christmaswishlist
    ExecStart=/usr/bin/node server.js
    Environment=FAMILY_CODE=pick-a-passcode
    Environment=HOST=127.0.0.1
@@ -48,19 +48,19 @@ All settings are optional environment variables.
    WantedBy=multi-user.target
    ```
 
-3. Give the service user its data folder: `sudo mkdir -p /opt/wishlists/data && sudo chown www-data /opt/wishlists/data`
-4. Start it: `sudo systemctl enable --now wishlists`
+3. Give the service user its data folder: `sudo mkdir -p /opt/christmaswishlist/data && sudo chown www-data /opt/christmaswishlist/data`
+4. Start it: `sudo systemctl enable --now christmaswishlist`
 
 ### Docker
 
 ```bash
-docker build -t wishlists .
-docker run -d --name wishlists --restart unless-stopped \
+docker build -t christmaswishlist .
+docker run -d --name christmaswishlist --restart unless-stopped \
   -p 3000:3000 -e FAMILY_CODE="pick-a-passcode" \
-  -v wishlists-data:/data wishlists
+  -v christmaswishlist-data:/data christmaswishlist
 ```
 
-The `wishlists-data` volume keeps the lists when the container is rebuilt.
+The `christmaswishlist-data` volume keeps the lists when the container is rebuilt.
 
 ### Platforms like Render, Railway or Fly.io
 

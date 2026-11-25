@@ -1,5 +1,5 @@
 {
-  "name": "family-wishlists",
+  "name": "christmaswishlist",
   "version": "1.0.0",
   "description": "Family Christmas wishlists with anonymous 'I bought this' marks",
   "main": "server.js",
