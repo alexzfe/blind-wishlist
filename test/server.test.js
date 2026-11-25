@@ -22,13 +22,14 @@ before(async () => {
   const port = await freePort();
   base = `http://127.0.0.1:${port}`;
   server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+    stdio: ['ignore', 'pipe', 'inherit'], // show the server's errors if it fails to start
     env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', DATA_FILE: path.join(dir, 'wishlists.json'), FAMILY_CODE: CODE }
   });
   await new Promise((resolve, reject) => {
     server.stdout.on('data', d => { if (String(d).includes('running')) resolve(); });
     server.on('exit', code => reject(new Error('server exited with ' + code)));
   });
-});
+}, { timeout: 5000 });
 
 after(() => {
   server.kill();
