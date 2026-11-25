@@ -19,6 +19,10 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const DATA_FILE = path.resolve(process.env.DATA_FILE || path.join(__dirname, 'data', 'wishlists.json'));
 const FAMILY_CODE = (process.env.FAMILY_CODE || '').trim();
+if (process.env.NODE_ENV === 'production' && !FAMILY_CODE) {
+  console.error('FAMILY_CODE is not set. Refusing to start in production, or anyone with the address could open the lists.');
+  process.exit(1);
+}
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 /* ---------- storage ---------- */
@@ -214,8 +218,8 @@ const SECURITY_HEADERS = {
   'X-Frame-Options': 'DENY'
 };
 
-function send(res, status, body, type = 'application/json; charset=utf-8') {
-  res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': type, 'Cache-Control': 'no-store' });
+function send(res, status, body, type = 'application/json; charset=utf-8', cache = 'no-store') {
+  res.writeHead(status, { ...SECURITY_HEADERS, 'Content-Type': type, 'Cache-Control': cache });
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
@@ -243,9 +247,10 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const p = url.pathname;
 
-    if (req.method === 'GET' && STATIC[p]) {
+    if ((req.method === 'GET' || req.method === 'HEAD') && STATIC[p]) {
       const [file, type] = STATIC[p];
-      return send(res, 200, fs.readFileSync(path.join(PUBLIC_DIR, file)), type);
+      // Fonts never change, so browsers may keep them; the page and app.js always come fresh after a deploy.
+      return send(res, 200, fs.readFileSync(path.join(PUBLIC_DIR, file)), type, p.startsWith('/fonts/') ? 'public, max-age=31536000, immutable' : 'no-store');
     }
     if (req.method === 'GET' && p === '/api/config') return send(res, 200, { needsCode: !!FAMILY_CODE });
 
@@ -269,6 +274,9 @@ const server = http.createServer(async (req, res) => {
     send(res, 500, { error: 'Something went wrong on the server.' });
   }
 });
+
+// Docker stops containers with SIGTERM, which Node ignores as PID 1. Saves are synchronous, so exiting now is safe.
+process.on('SIGTERM', () => process.exit(0));
 
 load();
 server.listen(PORT, HOST, () => {

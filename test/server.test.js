@@ -17,18 +17,24 @@ function freePort() {
   });
 }
 
-before(async () => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wishlist-test-'));
+// Starts a server with its own data folder; resolves once it is listening.
+async function start(env, dataDir) {
   const port = await freePort();
-  base = `http://127.0.0.1:${port}`;
-  server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+  const proc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
     stdio: ['ignore', 'pipe', 'inherit'], // show the server's errors if it fails to start
-    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', DATA_FILE: path.join(dir, 'wishlists.json'), FAMILY_CODE: CODE }
+    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', DATA_FILE: path.join(dataDir, 'wishlists.json'), ...env }
   });
   await new Promise((resolve, reject) => {
-    server.stdout.on('data', d => { if (String(d).includes('running')) resolve(); });
-    server.on('exit', code => reject(new Error('server exited with ' + code)));
+    proc.stdout.on('data', d => { if (String(d).includes('running')) resolve(); });
+    proc.on('exit', code => reject(new Error('server exited with ' + code)));
   });
+  return { proc, base: `http://127.0.0.1:${port}` };
+}
+const exited = proc => new Promise(resolve => proc.on('exit', code => resolve(code)));
+
+before(async () => {
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wishlist-test-'));
+  ({ proc: server, base } = await start({ FAMILY_CODE: CODE }, dir));
 }, { timeout: 5000 });
 
 after(() => {
@@ -55,4 +61,50 @@ test('only the address nginx added counts, not one the visitor wrote into the he
   // A visitor can send their own X-Forwarded-For; nginx appends the real address after it.
   for (let i = 0; i < 10; i++) await getData('guess' + i, '1.2.3.' + i + ', 203.0.113.20');
   assert.strictEqual((await getData(CODE, '203.0.113.20')).status, 429);
+});
+
+test('HEAD requests get the same answer as GET, for uptime monitors', async () => {
+  const r = await fetch(base + '/', { method: 'HEAD' });
+  assert.strictEqual(r.status, 200);
+});
+
+test('fonts are cached by browsers, while the page itself always comes fresh', async () => {
+  assert.match((await fetch(base + '/fonts/figtree-latin.woff2')).headers.get('cache-control'), /max-age=31536000/);
+  assert.strictEqual((await fetch(base + '/')).headers.get('cache-control'), 'no-store');
+});
+
+test('in production the server refuses to start without a passcode', async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'wishlist-test-'));
+  const proc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+    stdio: 'ignore', env: { ...process.env, NODE_ENV: 'production', FAMILY_CODE: '', PORT: String(await freePort()), DATA_FILE: path.join(d, 'w.json') }
+  });
+  const code = await Promise.race([exited(proc), new Promise(r => setTimeout(() => { proc.kill(); r('still running'); }, 3000))]);
+  fs.rmSync(d, { recursive: true, force: true });
+  assert.strictEqual(code, 1);
+});
+
+test('stops at once on SIGTERM, so deploys and restarts are quick', async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'wishlist-test-'));
+  const s = await start({ FAMILY_CODE: CODE }, d);
+  s.proc.kill('SIGTERM');
+  const code = await Promise.race([exited(s.proc), new Promise(r => setTimeout(() => { s.proc.kill('SIGKILL'); r('ignored SIGTERM'); }, 2000))]);
+  fs.rmSync(d, { recursive: true, force: true });
+  assert.strictEqual(code, 0);
+});
+
+test('the lists survive a restart, and only the last 14 daily backups are kept', async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'wishlist-test-'));
+  fs.writeFileSync(path.join(d, 'wishlists.json'), JSON.stringify({ people: [{ id: 'p1', name: 'Ana', createdAt: 1 }], items: [] }));
+  fs.mkdirSync(path.join(d, 'backups'));
+  for (let i = 1; i <= 15; i++) fs.writeFileSync(path.join(d, 'backups', `wishlists-2020-01-${String(i).padStart(2, '0')}.json`), '{}');
+  const s = await start({ FAMILY_CODE: CODE }, d);
+  try {
+    const h = { 'Content-Type': 'application/json', 'X-Family-Code': CODE };
+    const data = await (await fetch(s.base + '/api/data', { headers: h })).json();
+    assert.deepStrictEqual(data.data.people.map(p => p.name), ['Ana']);
+    assert.strictEqual((await fetch(s.base + '/api/people', { method: 'POST', headers: h, body: JSON.stringify({ name: 'Ben' }) })).status, 200);
+    const left = fs.readdirSync(path.join(d, 'backups'));
+    assert.strictEqual(left.length, 14);
+    assert.ok(!left.includes('wishlists-2020-01-01.json') && !left.includes('wishlists-2020-01-02.json'), 'the oldest copies go first');
+  } finally { s.proc.kill(); fs.rmSync(d, { recursive: true, force: true }); }
 });

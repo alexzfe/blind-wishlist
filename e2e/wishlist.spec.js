@@ -130,6 +130,31 @@ test('a link that is not a web address stops Save and keeps the old link', async
   await page.context().close();
 });
 
+test('a wish can be edited and removed, and a person renamed', async () => {
+  const hal = await person('Hal', ['Gloves']);
+  const page = await device({ me: hal });
+  await wish(page, 'Hal', 'Gloves').getByRole('button', { name: 'Edit' }).click();
+  const dlg = page.getByRole('dialog', { name: 'Edit wish' });
+  await dlg.getByLabel('What is it?').fill('Warm gloves');
+  await dlg.getByLabel('Link (optional)').fill('example.com/gloves');
+  await dlg.getByRole('button', { name: 'Save' }).click();
+  const link = wish(page, 'Hal', 'Warm gloves').getByRole('link', { name: 'Warm gloves' });
+  assert.strictEqual(await link.getAttribute('href'), 'https://example.com/gloves');
+
+  await wish(page, 'Hal', 'Warm gloves').getByRole('button', { name: 'Remove' }).click();
+  await page.getByRole('dialog', { name: 'Remove this wish?' }).getByRole('button', { name: 'Remove' }).click();
+  await card(page, 'Hal').getByText("Add a few things you'd love.").waitFor();
+
+  await card(page, 'Hal').getByRole('button', { name: 'Rename Hal' }).click();
+  const ren = page.getByRole('dialog', { name: 'Rename' });
+  await ren.getByLabel('Name').fill('Hallie');
+  await ren.getByRole('button', { name: 'Save' }).click();
+  await card(page, 'Hallie').waitFor();
+  const saved = (await api('GET', '/api/data')).data;
+  assert.ok(saved.people.some(p => p.name === 'Hallie') && !saved.items.some(i => i.personId === hal));
+  await page.context().close();
+});
+
 test('removing a person removes their list for everyone', async () => {
   await person('Gus', ['Kite']);
   const page = await device({ me: '' });

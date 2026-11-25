@@ -82,6 +82,16 @@ Before the first change each day, the server copies the lists to `data/backups/w
 
 To restore, stop the server, copy the backup you want over `data/wishlists.json` and start the server again.
 
+In Docker the lists live in the `/data` volume, so restore inside it, and keep the files owned by the `node` user (uid 1000) or saves will fail. For example, for a volume named `wishlist-prod-data`:
+
+```bash
+docker compose stop
+docker run --rm -v wishlist-prod-data:/data alpine sh -c 'cp /data/backups/wishlists-YYYY-MM-DD.json /data/wishlists.json && chown 1000:1000 /data/wishlists.json'
+docker compose start
+```
+
+To roll back the app itself (not the data), deploy an older release again: every build keeps its image, so tagging an older commit as a new `v*` release puts it back without rebuilding.
+
 ## Tests
 
 `npm test` runs the server tests (no browser needed). `npm run test:e2e` runs the browser tests: the first time, it installs Playwright into a git-ignored `.playwright/` folder (it isn't a project dependency), and it uses the system Chromium at `/usr/bin/chromium` (set `CHROME=/path/to/browser` for another one).
