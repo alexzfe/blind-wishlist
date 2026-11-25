@@ -5,5 +5,5 @@
   "main": "server.js",
   "private": true,
   "scripts": { "start": "node server.js", "test": "node --test", "test:e2e": "sh e2e/run.sh" },
-  "engines": { "node": ">=18" }
+  "engines": { "node": ">=22" }
 }

@@ -4,7 +4,7 @@ The name of the game is **simple**. This is a small family app that one person h
 
 What simple means here:
 
-- **No packages.** It runs on Node.js 18+ and its standard library alone. Use `node:test` for tests. Use a browser tool such as Playwright only as a test-time tool, outside `package.json` dependencies.
+- **No packages.** It runs on Node.js 22+ and its standard library alone. Use `node:test` for tests. Use a browser tool such as Playwright only as a test-time tool, outside `package.json` dependencies.
 - **No build step.** `public/` is served exactly as written: plain HTML, CSS and JavaScript.
 - **One process, one JSON file.** Storage stays `data/wishlists.json`.
 - **Self-contained.** The page loads fonts, images and scripts from this server only, with no outside calls.

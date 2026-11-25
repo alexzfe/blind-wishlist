@@ -2,7 +2,7 @@
 
 A small self-hosted site where your family keeps Christmas wishlists and marks gifts as bought, without revealing who bought them. Your own list never shows what's been bought.
 
-- Needs only **Node.js 18 or newer**. There's nothing to `npm install`.
+- Needs only **Node.js 22 or newer**. There's nothing to `npm install`.
 - Everything is saved to one file, `data/wishlists.json`.
 
 ## Run it
@@ -81,6 +81,16 @@ wishlist.example.com {
 Before the first change each day, the server copies the lists to `data/backups/wishlists-YYYY-MM-DD.json` and keeps the last 14 days. These copies sit on the same disk, so for real safety also copy the `data` folder somewhere else now and then.
 
 To restore, stop the server, copy the backup you want over `data/wishlists.json` and start the server again.
+
+In Docker the lists live in the `/data` volume, so restore inside it, and keep the files owned by the `node` user (uid 1000) or saves will fail. For example, for a volume named `wishlist-prod-data`:
+
+```bash
+docker compose stop
+docker run --rm -v wishlist-prod-data:/data alpine sh -c 'cp /data/backups/wishlists-YYYY-MM-DD.json /data/wishlists.json && chown 1000:1000 /data/wishlists.json'
+docker compose start
+```
+
+To roll back the app itself (not the data), deploy an older release again: every build keeps its image, so tagging an older commit as a new `v*` release puts it back without rebuilding.
 
 ## Tests
 
