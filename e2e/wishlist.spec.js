@@ -425,15 +425,20 @@ test('5 taps on "Nobody" turn admin mode on, it survives a reload, and "Admin of
     await nobody(page).tap();
     assert.strictEqual(await note(page).textContent(), says, `after tap ${n}`);
   }
+  await banner(page).getByRole('button', { name: 'Admin off' }).tap();
+  assert.strictEqual(await note(page).textContent(), '', 'turning admin off clears the note');
+  for (let i = 0; i < 5; i++) await nobody(page).tap();
   assert.deepStrictEqual(await adminButtons(page, 'Zed', 'Drum'), [1, 1, 1, 1]);
   const off = banner(page).getByRole('button', { name: 'Admin off' });
   assert.ok(await off.isVisible());
 
   await page.reload();
   await wish(page, 'Zed', 'Drum').getByRole('button', { name: 'Edit' }).waitFor();
+  await nobody(page).tap(); await nobody(page).tap(); await nobody(page).tap(); // ignored while admin is on
   await off.tap();
   assert.deepStrictEqual(await adminButtons(page, 'Zed', 'Drum'), [0, 0, 0, 0]);
   assert.ok(await off.isHidden());
+  assert.strictEqual(await page.evaluate(() => document.activeElement.id), 'meChange', 'focus moves to the Switch button');
   await page.reload();
   await wish(page, 'Zed', 'Drum').waitFor();
   assert.deepStrictEqual(await adminButtons(page, 'Zed', 'Drum'), [0, 0, 0, 0]);

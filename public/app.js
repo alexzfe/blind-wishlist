@@ -248,21 +248,26 @@ function setMe(id) { me = id; store.set('wishlist.me', id); render(); }
 /* ---------- admin mode ---------- */
 
 // Five quick taps on "Nobody" in the intro turn admin mode on, like a phone's hidden developer options.
-// Taps more than 2 seconds apart start the count again. From the third tap a note counts down.
+// Taps more than TAP_GAP apart start the count again. From the third tap a note counts down,
+// and it goes away after the same TAP_GAP, so it never shows a count that has already reset.
+const TAP_GAP = 2000;
 let taps = 0, lastTap = 0, noteTimer;
 $('nobody').addEventListener('click', () => {
   if (admin) return;
   const now = Date.now();
-  taps = now - lastTap < 2000 ? taps + 1 : 1;
+  taps = now - lastTap < TAP_GAP ? taps + 1 : 1;
   lastTap = now;
-  const note = $('adminNote');
-  clearTimeout(noteTimer);
-  note.textContent = taps < 3 ? '' : taps === 3 ? '2 more taps…' : taps === 4 ? '1 more tap…' : 'Admin is on.';
-  noteTimer = setTimeout(() => { note.textContent = ''; }, 3000);
-  if (taps >= 5) { taps = 0; setAdmin(true); }
+  if (taps >= 5) { taps = 0; setAdmin(true); return showNote('Admin is on.'); }
+  showNote(taps === 3 ? '2 more taps…' : taps === 4 ? '1 more tap…' : '');
 });
-$('adminOff').addEventListener('click', () => setAdmin(false));
-function setAdmin(on) { admin = on; store.set('wishlist.admin', on ? '1' : ''); render(); }
+function showNote(text) {
+  clearTimeout(noteTimer);
+  $('adminNote').textContent = text;
+  if (text) noteTimer = setTimeout(() => showNote(''), TAP_GAP);
+}
+// The button vanishes once admin is off, so focus moves to the nearest button left instead of being lost.
+$('adminOff').addEventListener('click', () => { setAdmin(false); $('meChange').focus(); });
+function setAdmin(on) { admin = on; store.set('wishlist.admin', on ? '1' : ''); showNote(''); render(); }
 
 // The personal link for someone: send it to them and their device knows who they are straight away.
 async function openLink(p) {

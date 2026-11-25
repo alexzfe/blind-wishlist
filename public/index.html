@@ -34,7 +34,7 @@ header p.intro{margin:12px 0 0;color:var(--soft);max-width:54ch;text-wrap:pretty
 /* "Nobody" hides the admin switch (5 taps), so it mustn't look tappable, highlight on a double-click, or zoom a phone on a double-tap. */
 #nobody{display:inline-block;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .adminnote{margin:6px 0 0;color:var(--green);font-size:14px;font-weight:600}
-.adminnote:empty{display:none}
+.adminnote:empty{margin:0} /* stays in the page while empty, so screen readers still announce it */
 /* Who this device is, always in sight, so nobody uses the lists as someone else without noticing. */
 .me{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 8px 8px 16px}
 .me .as{color:var(--soft);font-size:15px}
