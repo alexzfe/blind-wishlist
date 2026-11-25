@@ -123,6 +123,7 @@ function render() {
   const total = items.length;
   $('hint').textContent = `${people.length} ${people.length === 1 ? 'list' : 'lists'} · ${total} ${total === 1 ? 'wish' : 'wishes'}${me ? ' · your list is first' : ''}`;
 
+  const keep = focusKey();
   const ordered = [...people].sort((a, b) => (b.id === me) - (a.id === me) || a.name.localeCompare(b.name));
   grid.innerHTML = ordered.map(p => {
     const mine = p.id === me;
@@ -140,6 +141,21 @@ function render() {
       <div class="cfoot"><button class="add" type="button" data-act="add-item">+ Add a wish${mine ? '' : ' for ' + esc(p.name)}</button></div>
     </section>`;
   }).join('');
+  refocus(keep);
+}
+
+// Redrawing replaces the buttons, so put keyboard focus back on the same button (or the nearest one left).
+function focusKey() {
+  const f = document.activeElement;
+  if (!f || !$('grid').contains(f)) return null;
+  const li = f.closest('[data-item]'), card = f.closest('[data-person]');
+  return { act: f.dataset.act, item: li && li.dataset.item, person: card && card.dataset.person };
+}
+function refocus(k) {
+  if (!k) return;
+  const box = (k.item && document.querySelector(`[data-item="${CSS.escape(k.item)}"]`)) || (k.person && document.querySelector(`[data-person="${CSS.escape(k.person)}"]`));
+  const el = box && (box.querySelector(`[data-act="${k.act}"]`) || box.querySelector('a, button'));
+  if (el) el.focus();
 }
 
 function itemHTML(i, mine) {
