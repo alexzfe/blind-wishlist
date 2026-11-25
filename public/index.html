@@ -31,6 +31,10 @@ header{max-width:1180px;margin:0 auto;padding:44px max(5vw,16px) 0}
 header h1{font-size:clamp(36px,6vw,60px);font-style:italic;font-weight:500;color:var(--green)}
 header p.intro{margin:12px 0 0;color:var(--soft);max-width:54ch;text-wrap:pretty}
 [hidden]{display:none!important}
+/* "Nobody" hides the admin switch (5 taps), so it mustn't look tappable, highlight on a double-click, or zoom a phone on a double-tap. */
+#nobody{display:inline-block;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.adminnote{margin:6px 0 0;color:var(--green);font-size:14px;font-weight:600}
+.adminnote:empty{display:none}
 /* Who this device is, always in sight, so nobody uses the lists as someone else without noticing. */
 .me{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 8px 8px 16px}
 .me .as{color:var(--soft);font-size:15px}
@@ -136,9 +140,10 @@ footer{color:var(--soft);font-size:14px;text-align:center;padding:0 16px 40px;te
     <div>
       <p class="kicker">Merry Christmas</p>
       <h1>Family Christmas Wishlists</h1>
-      <p class="intro">Add what you'd love this year. When you buy something off someone's list, mark it so nobody doubles up. Nobody sees who bought it.</p>
+      <p class="intro">Add what you'd love this year. When you buy something off someone's list, mark it so nobody doubles up. <span id="nobody">Nobody</span> sees who bought it.</p>
+      <p class="adminnote" id="adminNote" role="status"></p>
     </div>
-    <div class="me" id="meBar" hidden><span class="as">You're</span><strong id="meName"></strong><button class="ghost" type="button" id="meChange">Not you?</button></div>
+    <div class="me" id="meBar" hidden><span class="as">You're</span><strong id="meName"></strong><button class="ghost" type="button" id="meChange">Not you?</button><button class="ghost" type="button" id="adminOff" hidden>Admin off</button></div>
   </div>
   <div class="holly" aria-hidden="true"><svg width="56" height="28" viewBox="0 0 44 22"><path d="M21 12C17 4 9 3 3 6c3 1 3 4 1 6 4 0 6 2 6 5 3-3 7-4 11-5Z" fill="#2f6b4f"/><path d="M23 12c4-8 12-9 18-6-3 1-3 4-1 6-4 0-6 2-6 5-3-3-7-4-11-5Z" fill="#1d4d3a"/><circle cx="19" cy="14" r="3.4" fill="#b81d34"/><circle cx="25" cy="14" r="3.4" fill="#b81d34"/><circle cx="22" cy="9.5" r="3.4" fill="#d22b43"/></svg></div>
 </header>

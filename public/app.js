@@ -5,6 +5,9 @@ const store = {get(k){try{return localStorage.getItem(k)}catch{return null}}, se
 
 let people = [], items = [], loaded = false, busy = 0;
 let me = store.get('wishlist.me') || '';
+// Admin mode shows the rare buttons that change other people's things: rename, remove, and adding or editing someone else's wishes.
+// It's to avoid accidents and clutter, not security: the server still accepts any change from anyone with the passcode.
+let admin = store.get('wishlist.admin') === '1';
 // A personal link (/?link=<secret>) signs this device in as one person, and works only once, so a forwarded copy can't.
 // It's used up below once the passcode is in, not by loading the page, so a chat app's link preview can't use it up.
 let linkToken = new URLSearchParams(location.search).get('link') || '';
@@ -119,6 +122,7 @@ const svgLink = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" str
 const nameOf = id => (people.find(p => p.id === id) || {}).name;
 
 function render() {
+  $('adminOff').hidden = !admin;
   if (!loaded) return;
   if (me && !nameOf(me)) { me = ''; store.set('wishlist.me', ''); }
   $('meBar').hidden = !me;
@@ -140,11 +144,11 @@ function render() {
     const list = its.length ? `<ul>${its.map(i => itemHTML(i, mine)).join('')}</ul>` : `<div class="empty">${mine ? "Add a few things you'd love." : 'Nothing here yet. Give them a nudge!'}</div>`;
     return `<section class="card${mine ? ' mine' : ''}" data-person="${esc(p.id)}">
       <div class="chead"><div class="who"><h2>${esc(p.name)}${mine ? ' (you)' : ''}</h2><span class="count">${count}</span></div>
-        <div class="tools"><button class="icon" type="button" data-act="link-person" title="Personal link for ${esc(p.name)}" aria-label="Personal link for ${esc(p.name)}">${svgLink}</button><button class="icon" type="button" data-act="edit-person" title="Rename ${esc(p.name)}" aria-label="Rename ${esc(p.name)}">${svgPen}</button><button class="icon" type="button" data-act="del-person" title="Remove ${esc(p.name)}" aria-label="Remove ${esc(p.name)}">${svgBin}</button></div>
+        <div class="tools"><button class="icon" type="button" data-act="link-person" title="Personal link for ${esc(p.name)}" aria-label="Personal link for ${esc(p.name)}">${svgLink}</button>${admin ? `<button class="icon" type="button" data-act="edit-person" title="Rename ${esc(p.name)}" aria-label="Rename ${esc(p.name)}">${svgPen}</button><button class="icon" type="button" data-act="del-person" title="Remove ${esc(p.name)}" aria-label="Remove ${esc(p.name)}">${svgBin}</button>` : ''}</div>
       </div>
       ${mine ? "<div class=\"mynote\">This is your list, so we're keeping purchases a surprise.</div>" : ''}
       ${list}
-      <div class="cfoot"><button class="add" type="button" data-act="add-item">+ Add a wish${mine ? '' : ' for ' + esc(p.name)}</button></div>
+      ${mine || admin ? `<div class="cfoot"><button class="add" type="button" data-act="add-item">+ Add a wish${mine ? '' : ' for ' + esc(p.name)}</button></div>` : ''}
     </section>`;
   }).join('') + '<button class="add-card" type="button" data-act="add-person">+ Add a person</button>';
   refocus(keep);
@@ -173,7 +177,7 @@ function itemHTML(i, mine) {
   const edit = `<button class="icon" type="button" data-act="edit-item" title="Edit" aria-label="Edit ${esc(i.title)}">${svgPen}</button>`;
   if (mine) act = edit + `<button class="icon" type="button" data-act="del-item" title="Remove" aria-label="Remove ${esc(i.title)}">${svgBin}</button>`;
   else if (taken) act = `<span class="ribbon">★ Someone's got this</span><button class="link" type="button" data-act="unbuy">Undo</button>`;
-  else act = `<button class="buy" type="button" data-act="buy">I bought this</button>` + edit;
+  else act = `<button class="buy" type="button" data-act="buy">I bought this</button>` + (admin ? edit : '');
   return `<li class="item${taken ? ' taken' : ''}" data-item="${esc(i.id)}"><div class="it-body"><div class="it-title">${title}</div>${meta ? `<div class="it-meta">${meta}</div>` : ''}</div><div class="it-act">${act}</div></li>`;
 }
 
@@ -240,6 +244,25 @@ $('dlgWho').addEventListener('cancel', e => { if (!me) e.preventDefault(); });
 $('dlgWho').addEventListener('close', () => { if (!me) setTimeout(askWho); });
 $('meChange').addEventListener('click', askWho);
 function setMe(id) { me = id; store.set('wishlist.me', id); render(); }
+
+/* ---------- admin mode ---------- */
+
+// Five quick taps on "Nobody" in the intro turn admin mode on, like a phone's hidden developer options.
+// Taps more than 2 seconds apart start the count again. From the third tap a note counts down.
+let taps = 0, lastTap = 0, noteTimer;
+$('nobody').addEventListener('click', () => {
+  if (admin) return;
+  const now = Date.now();
+  taps = now - lastTap < 2000 ? taps + 1 : 1;
+  lastTap = now;
+  const note = $('adminNote');
+  clearTimeout(noteTimer);
+  note.textContent = taps < 3 ? '' : taps === 3 ? '2 more taps…' : taps === 4 ? '1 more tap…' : 'Admin is on.';
+  noteTimer = setTimeout(() => { note.textContent = ''; }, 3000);
+  if (taps >= 5) { taps = 0; setAdmin(true); }
+});
+$('adminOff').addEventListener('click', () => setAdmin(false));
+function setAdmin(on) { admin = on; store.set('wishlist.admin', on ? '1' : ''); render(); }
 
 // The personal link for someone: send it to them and their device knows who they are straight away.
 async function openLink(p) {
