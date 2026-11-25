@@ -1,5 +1,5 @@
 // Family Christmas Wishlists — a small self-hosted server.
-// No packages to install: needs only Node.js 18 or newer.
+// No packages to install: needs only Node.js 22 or newer.
 //
 // Settings (environment variables, all optional):
 //   PORT         Port to listen on. Default 3000.

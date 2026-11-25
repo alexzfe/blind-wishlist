@@ -2,7 +2,7 @@
 
 A small self-hosted site where your family keeps Christmas wishlists and marks gifts as bought, without revealing who bought them. Your own list never shows what's been bought.
 
-- Needs only **Node.js 18 or newer**. There's nothing to `npm install`.
+- Needs only **Node.js 22 or newer**. There's nothing to `npm install`.
 - Everything is saved to one file, `data/wishlists.json`.
 
 ## Run it
