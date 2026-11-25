@@ -5,10 +5,14 @@ const store = {get(k){try{return localStorage.getItem(k)}catch{return null}}, se
 
 let people = [], items = [], loaded = false, busy = 0;
 let me = store.get('wishlist.me') || '';
+// A personal link (/?link=<secret>) signs this device in as one person, and works only once, so a forwarded copy can't.
+// It's used up below once the passcode is in, not by loading the page, so a chat app's link preview can't use it up.
+let linkToken = new URLSearchParams(location.search).get('link') || '';
+let linkNote = '';
+function dropLink() { linkToken = ''; history.replaceState(null, '', location.pathname + location.hash); }
 let code = store.get('wishlist.code') || '';
 let editing = null;
 let saves = 0; // counts saves, so a refresh that started before one doesn't draw old lists over it
-let askedWho = false;
 let askingCode = false;
 
 /* ---------- talking to the server ---------- */
@@ -23,7 +27,7 @@ async function api(method, path, body) {
   let j = {};
   try { j = await r.json(); } catch {}
   if (r.status === 401) throw new AuthError(j.error || 'Passcode needed.');
-  if (!r.ok) throw new Error(j.error || "That didn't save.");
+  if (!r.ok) throw Object.assign(new Error(j.error || "That didn't save."), { status: r.status });
   return j;
 }
 
@@ -57,12 +61,29 @@ async function write(method, path, body) {
   }
 }
 
+async function useLink(people) {
+  // A device that already knows who it is leaves the link alone, so it still works for the person it was meant for.
+  const current = people.find(p => p.id === me);
+  if (current) { dropLink(); return showErr(`This device is already signed in as ${current.name}, so the personal link wasn't used. Not ${current.name}? Tap "Switch" at the top.`); }
+  const t = linkToken; linkToken = ''; // cleared first, so two overlapping refreshes can't both use it
+  try {
+    me = (await api('POST', `/api/links/${encodeURIComponent(t)}`)).personId;
+    store.set('wishlist.me', me);
+    dropLink();
+  } catch (e) {
+    if (e instanceof AuthError) { linkToken = t; throw e; } // tried again once the passcode is in
+    if (e.status === 410) { dropLink(); linkNote = "That personal link was already used, so it can't sign anyone in. Tap your name below, or ask for a new link."; }
+    else { linkNote = "Couldn't check your personal link just now. Reload the page to try again, or tap your name below."; } // the link stays in the address bar for the reload
+  }
+}
+
 async function refresh() {
   const before = saves;
   try {
     const data = (await api('GET', '/api/data')).data;
     if (saves !== before) return; // a save finished meanwhile and already drew newer lists
-    apply(data); askWho();
+    if (linkToken) await useLink(data.people);
+    apply(data);
   }
   catch (e) {
     if (e instanceof AuthError) askCode(!!code);
@@ -93,22 +114,19 @@ function askCode(wasWrong) {
 const sortBy = (a, b) => (a.createdAt || 0) - (b.createdAt || 0);
 const svgPen = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const svgBin = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>';
+const svgLink = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
+
+const nameOf = id => (people.find(p => p.id === id) || {}).name;
 
 function render() {
-  const sel = $('meSel');
-  if (me && loaded && !people.some(p => p.id === me)) { me = ''; store.set('wishlist.me', ''); }
-  sel.innerHTML = '<option value="">Just browsing</option>' + people.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
-  sel.value = me;
+  if (!loaded) return;
+  if (me && !nameOf(me)) { me = ''; store.set('wishlist.me', ''); }
+  $('meBar').hidden = !me;
+  if (me) { $('meName').textContent = nameOf(me); $('meChange').textContent = `Not ${nameOf(me)}? Switch`; }
+  else askWho();
 
   const grid = $('grid');
-  if (!loaded) return;
-  if (!people.length) {
-    $('hint').textContent = '';
-    grid.classList.add('none');
-    grid.innerHTML = `<div class="welcome"><h2>Let's get the lists going</h2><p>Start by adding each person in the family. Then everyone can add their own wishes.</p><button class="primary" type="button" data-act="add-person">Add the first person</button></div>`;
-    return;
-  }
-  grid.classList.remove('none');
+  if (!people.length) { $('hint').textContent = ''; grid.innerHTML = ''; return; }
   const total = items.length;
   $('hint').textContent = `${people.length} ${people.length === 1 ? 'list' : 'lists'} · ${total} ${total === 1 ? 'wish' : 'wishes'}${me ? ' · your list is first' : ''}`;
 
@@ -122,7 +140,7 @@ function render() {
     const list = its.length ? `<ul>${its.map(i => itemHTML(i, mine)).join('')}</ul>` : `<div class="empty">${mine ? "Add a few things you'd love." : 'Nothing here yet. Give them a nudge!'}</div>`;
     return `<section class="card${mine ? ' mine' : ''}" data-person="${esc(p.id)}">
       <div class="chead"><div class="who"><h2>${esc(p.name)}${mine ? ' (you)' : ''}</h2><span class="count">${count}</span></div>
-        <div class="tools"><button class="icon" type="button" data-act="edit-person" title="Rename ${esc(p.name)}" aria-label="Rename ${esc(p.name)}">${svgPen}</button><button class="icon" type="button" data-act="del-person" title="Remove ${esc(p.name)}" aria-label="Remove ${esc(p.name)}">${svgBin}</button></div>
+        <div class="tools"><button class="icon" type="button" data-act="link-person" title="Personal link for ${esc(p.name)}" aria-label="Personal link for ${esc(p.name)}">${svgLink}</button><button class="icon" type="button" data-act="edit-person" title="Rename ${esc(p.name)}" aria-label="Rename ${esc(p.name)}">${svgPen}</button><button class="icon" type="button" data-act="del-person" title="Remove ${esc(p.name)}" aria-label="Remove ${esc(p.name)}">${svgBin}</button></div>
       </div>
       ${mine ? "<div class=\"mynote\">This is your list, so we're keeping purchases a surprise.</div>" : ''}
       ${list}
@@ -171,18 +189,71 @@ function confirmBox(title, body, okText) {
   });
 }
 
+/* ---------- who are you? ---------- */
+
+// Covers the whole screen until this device knows who it is. Every choice is confirmed, so a slip of the finger can't sign you in as someone else.
+let chosen = null; // { id } for someone on the list, { name } for someone new
 function askWho() {
-  if (askedWho || me || !people.length) return;
-  askedWho = true;
-  if (store.get('wishlist.asked') === '1') return;
-  $('whoPicks').innerHTML = [...people].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<button value="${esc(p.id)}">${esc(p.name)}</button>`).join('');
   const d = $('dlgWho');
-  d.returnValue = '';
-  d.addEventListener('close', () => { store.set('wishlist.asked', '1'); setMe(d.returnValue || ''); }, { once: true });
+  if (d.open) return;
+  $('whoPicks').innerHTML = [...people].sort((a, b) => a.name.localeCompare(b.name)).map(p => `<button type="button" data-pick="${esc(p.id)}">${esc(p.name)}</button>`).join('');
+  $('whoPicks').hidden = !people.length;
+  $('joinLabel').textContent = people.length ? 'Not on the list? Write your name' : 'Write your name to start the family lists';
+  $('whoBack').hidden = !me;
+  $('whoBack').textContent = `Go back, I'm ${nameOf(me)}`;
+  $('joinName').value = '';
+  $('whoNote').textContent = linkNote; linkNote = '';
   d.showModal();
+  whoStep(false);
 }
+// Focus goes to the title, not a button, so no name looks already picked and a held-down Enter can't press "Yes".
+function whoStep(sure) { $('whoPick').hidden = sure; $('whoSure').hidden = !sure; $(sure ? 'sTitle' : 'wTitle').focus(); }
+function confirmWho(c) {
+  chosen = c;
+  const p = c.id && people.find(x => x.id === c.id);
+  $('sTitle').textContent = p ? `You're ${p.name}?` : `Join as ${c.name}?`;
+  $('sBody').textContent = p ? `From now on this device will show the lists as ${p.name}, and hide what's been bought for ${p.name}.` : `We'll start a new list for ${c.name}. If you're already on the list, go back and tap your name instead.`;
+  whoStep(true);
+}
+$('whoPicks').addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) confirmWho({ id: b.dataset.pick }); });
+$('fJoin').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = $('joinName').value.trim(); if (!name) return;
+  const same = people.find(p => p.name.trim().toLowerCase() === name.toLowerCase());
+  confirmWho(same ? { id: same.id } : { name });
+});
+$('sNo').addEventListener('click', () => whoStep(false));
+$('whoBack').addEventListener('click', () => $('dlgWho').close());
+$('sYes').addEventListener('click', async () => {
+  const yes = $('sYes');
+  if (yes.disabled) return; // a second tap or Enter while saving would add the person twice
+  yes.disabled = true;
+  let id = chosen.id;
+  if (!id) { const r = await write('POST', '/api/people', { name: chosen.name }); id = r && r.id; }
+  yes.disabled = false;
+  if (!id) { $('whoNote').textContent = $('status').textContent; return whoStep(false); } // the page's own message is hidden behind this screen
+  $('dlgWho').close();
+  setMe(id);
+});
+// Escape can't skip it. If the browser closes it anyway, open it again.
+$('dlgWho').addEventListener('cancel', e => { if (!me) e.preventDefault(); });
+$('dlgWho').addEventListener('close', () => { if (!me) setTimeout(askWho); });
+$('meChange').addEventListener('click', askWho);
 function setMe(id) { me = id; store.set('wishlist.me', id); render(); }
-$('meSel').addEventListener('change', e => setMe(e.target.value));
+
+// The personal link for someone: send it to them and their device knows who they are straight away.
+async function openLink(p) {
+  const r = await write('POST', `/api/people/${encodeURIComponent(p.id)}/link`);
+  if (!r) return;
+  $('lTitle').textContent = `${p.name}'s personal link`;
+  $('lBody').textContent = `Send this to ${p.name} only. It works once: the first phone or tablet to open it is signed in as ${p.name}, and then the link stops working. They'll still need the family passcode the first time.`;
+  $('lUrl').value = `${location.origin}/?link=${encodeURIComponent(r.link)}`;
+  $('lCopy').textContent = 'Copy link';
+  $('dlgLink').showModal();
+}
+$('lCopy').addEventListener('click', () => {
+  navigator.clipboard.writeText($('lUrl').value).then(() => { $('lCopy').textContent = 'Copied!'; }, () => { $('lUrl').select(); $('lCopy').textContent = 'Select it and copy'; });
+});
 
 function openPerson(p) {
   editing = { kind: 'person', id: p ? p.id : null };
@@ -207,11 +278,7 @@ $('dlgPerson').addEventListener('close', async () => {
   const name = $('pName').value.trim(); if (!name) return;
   const e = editing;
   if (e.id) write('PATCH', `/api/people/${encodeURIComponent(e.id)}`, { name });
-  else {
-    const first = !me && !people.length;
-    const r = await write('POST', '/api/people', { name });
-    if (r && r.id && first) setMe(r.id);
-  }
+  else write('POST', '/api/people', { name });
 });
 $('dlgItem').addEventListener('close', async () => {
   if ($('dlgItem').returnValue !== 'ok') return;
@@ -227,6 +294,8 @@ function checkUrl() {
   $('iUrl').setCustomValidity(raw && !safeUrl(raw) ? "That doesn't look like a web address. Fix it or leave it empty." : '');
 }
 $('iUrl').addEventListener('input', checkUrl);
+// Cancel in the forms is a plain button, so pressing Enter (or Go on a phone keyboard) saves instead of cancelling.
+for (const b of document.querySelectorAll('dialog button[type=button][value=cancel]')) b.addEventListener('click', () => b.closest('dialog').close('cancel'));
 
 document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-act]'); if (!b) return;
@@ -236,6 +305,7 @@ document.addEventListener('click', async ev => {
   const p = people.find(x => x.id === pid), it = items.find(x => x.id === iid);
   if (act === 'add-person') openPerson(null);
   else if (act === 'edit-person' && p) openPerson(p);
+  else if (act === 'link-person' && p) openLink(p);
   else if (act === 'del-person' && p) {
     const n = items.filter(i => i.personId === p.id).length;
     if (await confirmBox(`Remove ${p.name}?`, `This deletes ${p.name}'s list${n ? ` and all ${n} ${n === 1 ? 'wish' : 'wishes'} on it` : ''} for everyone. It can't be undone.`, 'Remove'))
@@ -258,7 +328,6 @@ document.addEventListener('click', async ev => {
   }
 });
 
-render();
 refresh();
 // Pick up other people's changes every 15 seconds while the page is open and visible.
 setInterval(() => { if (!busy && !document.hidden && !document.querySelector('dialog[open]')) refresh(); }, 15000);

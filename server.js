@@ -157,6 +157,22 @@ const routes = [
     return { data: snapshot() };
   }],
 
+  // A personal link signs one device in as this person, once. Until it's used, asking again gives the same link,
+  // so sending it twice doesn't break the first copy. The secret is never in /api/data.
+  ['POST', /^\/api\/people\/([\w-]+)\/link$/, (b, id) => {
+    const p = needPerson(id);
+    if (!p.link) { p.link = crypto.randomBytes(18).toString('base64url'); save(); }
+    return { link: p.link };
+  }],
+
+  ['POST', /^\/api\/links\/([\w-]+)$/, (b, token) => {
+    const p = db.people.find(x => x.link && x.link === token);
+    if (!p) throw new HttpError(410, 'This link has already been used.');
+    delete p.link;
+    save();
+    return { personId: p.id };
+  }],
+
   // Marks bought / not bought. Nothing about who did it is stored.
   ['POST', /^\/api\/items\/([\w-]+)\/purchased$/, (b, id) => {
     const it = needItem(id);
@@ -205,6 +221,7 @@ const STATIC = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+  '/icon.png': ['icon.png', 'image/png'],
   '/fonts/fraunces-latin.woff2': ['fonts/fraunces-latin.woff2', 'font/woff2'],
   '/fonts/fraunces-latin-ext.woff2': ['fonts/fraunces-latin-ext.woff2', 'font/woff2'],
   '/fonts/fraunces-italic-latin.woff2': ['fonts/fraunces-italic-latin.woff2', 'font/woff2']

@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
+<link rel="icon" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
+<meta name="apple-mobile-web-app-title" content="Wishlists">
 <title>Family Christmas Wishlists</title>
 <style>
 /* Fonts are served from this server (SIL OFL, licence in /public/fonts). Fraunces is used for headings only; everything else uses the device's own font. */
@@ -28,9 +30,11 @@ header{max-width:1180px;margin:0 auto;padding:44px max(5vw,16px) 0}
 .kicker{margin:0 0 6px;color:var(--red);font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
 header h1{font-size:clamp(36px,6vw,60px);font-style:italic;font-weight:500;color:var(--green)}
 header p.intro{margin:12px 0 0;color:var(--soft);max-width:54ch;text-wrap:pretty}
-.me{display:flex;align-items:center;gap:10px}
-.me label{color:var(--soft);font-size:15px}
-.me select{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font:inherit;min-height:44px;max-width:220px}
+[hidden]{display:none!important}
+/* Who this device is, always in sight, so nobody uses the lists as someone else without noticing. */
+.me{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 8px 8px 16px}
+.me .as{color:var(--soft);font-size:15px}
+.me strong{font-family:Fraunces,Georgia,serif;font-size:24px;font-weight:600;color:var(--green);overflow-wrap:anywhere}
 .holly{display:flex;align-items:center;gap:14px;margin-top:28px;color:var(--line)}
 .holly::before,.holly::after{content:"";flex:1;border-top:1px solid currentColor}
 .holly svg{flex:none}
@@ -40,7 +44,6 @@ main{max-width:1180px;margin:0 auto;padding:20px max(5vw,16px) 64px}
 /* Masonry: cards flow down columns, so short lists don't leave holes. */
 .grid{columns:380px;column-gap:24px}
 .grid>*{break-inside:avoid;margin:0 0 24px}
-.grid.none{columns:auto}
 .card{background:var(--card);border:1px solid var(--line);border-radius:6px;box-shadow:0 1px 2px rgba(60,40,20,.06);overflow:hidden}
 .card.mine{border-top:0}
 .card.mine::before{content:"";display:block;height:6px;background:var(--stripe)}
@@ -69,7 +72,7 @@ li.taken .it-meta{opacity:.7}
 .cfoot{padding:6px 10px 12px}
 button{font:inherit;cursor:pointer;border-radius:8px;min-height:44px;padding:0 16px;border:1px solid transparent}
 @media (prefers-reduced-motion:no-preference){button{transition-property:transform,background-color,border-color,color;transition-duration:.15s;transition-timing-function:ease-out}button:active{transform:scale(.97)}}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .primary{background:var(--red);color:var(--onred);font-weight:600}
 .primary:hover{filter:brightness(1.1)}
 .ghost{background:transparent;color:var(--ink);border-color:var(--line)}
@@ -83,9 +86,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .add:hover{background:var(--wash)}
 .add-card{display:block;width:100%;min-height:72px;border-radius:6px;background:transparent;border:1px dashed var(--soft);color:var(--red);font-weight:600}
 .add-card:hover{background:var(--card)}
-.welcome{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:36px 28px;text-align:center;max-width:540px;margin:12px auto}
-.welcome h2{font-size:30px;color:var(--green);margin-bottom:8px}
-.welcome p{color:var(--soft);margin:0 0 20px}
 .status{padding:10px 14px;border-radius:8px;border:1px solid var(--red);color:var(--red);margin-bottom:16px;font-size:15px}
 .status:empty{display:none}
 dialog{border:0;border-radius:10px;padding:0;width:min(460px,calc(100vw - 24px));background:var(--card);color:var(--ink);box-shadow:0 30px 60px -20px rgba(0,0,0,.45)}
@@ -99,12 +99,34 @@ dialog p{margin:0;color:var(--soft)}
 input,textarea{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--soft);background:var(--paper);color:var(--ink);width:100%}
 textarea{min-height:72px;resize:vertical}
 .actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:end;margin-top:4px}
-.picks{display:flex;flex-wrap:wrap;gap:8px}
-.picks button{background:var(--paper);border-color:var(--line);color:var(--ink);font-weight:600}
+/* "Who are you?" covers the whole screen until it's answered. Big names, big buttons. */
+dialog.full{width:100%;height:100%;max-width:none;max-height:none;margin:0;border-radius:0;background:var(--paper);box-shadow:none;overflow-y:auto}
+dialog.full::backdrop{background:var(--paper)}
+.whobox{max-width:600px;margin:0 auto;padding:max(6vh,24px) 20px 40px}
+.step{display:grid;gap:18px}
+.whobox h3{font-size:clamp(32px,7vw,44px)}
+.whobox h3:focus{outline:none}
+.whobox p{font-size:18px}
+.picks{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.picks button{min-height:60px;font-size:20px;font-weight:600;background:var(--card);border:2px solid var(--line);color:var(--ink);overflow-wrap:anywhere}
 .picks button:hover{border-color:var(--green)}
+.join{display:grid;gap:8px;padding:0}
+.join label{font-weight:600}
+.join .row{display:flex;gap:8px}
+.join input{font-size:18px;flex:1}
+.whobox .actions{justify-content:start}
+.whobox .actions button{min-height:56px;font-size:18px}
 body.busy{cursor:progress}body.busy button{pointer-events:none;opacity:.7}
 footer{color:var(--soft);font-size:14px;text-align:center;padding:0 16px 40px;text-wrap:balance}
-@media (max-width:600px){header{padding-top:32px}.chead{padding:18px 16px 8px}ul{padding:0 6px}.mynote{margin-inline:16px}}
+/* Phones: a shorter header so the lists start on the first screen, and dialogs pinned to the top so the keyboard can't hide Save. */
+@media (max-width:600px){
+  .chead{padding:18px 16px 8px}ul{padding:0 6px}.mynote{margin-inline:16px}
+  header{padding-top:20px}.top{gap:14px}.kicker{margin-bottom:4px}
+  header h1{font-size:32px}header p.intro{margin-top:8px;font-size:15px}
+  .holly{margin-top:14px}main{padding-top:10px}.bar{margin-bottom:16px}
+  .chead h2{font-size:23px}
+  dialog{margin-top:12px;max-height:calc(100dvh - 24px)}
+}
 @media (prefers-reduced-motion:no-preference){li.item{transition:background .25s}li.item.flash{background:var(--wash)}}
 </style>
 </head>
@@ -116,7 +138,7 @@ footer{color:var(--soft);font-size:14px;text-align:center;padding:0 16px 40px;te
       <h1>Family Christmas Wishlists</h1>
       <p class="intro">Add what you'd love this year. When you buy something off someone's list, mark it so nobody doubles up. Nobody sees who bought it.</p>
     </div>
-    <div class="me"><label for="meSel">I'm</label><select id="meSel"><option value="">Just browsing</option></select></div>
+    <div class="me" id="meBar" hidden><span class="as">You're</span><strong id="meName"></strong><button class="ghost" type="button" id="meChange">Not you?</button></div>
   </div>
   <div class="holly" aria-hidden="true"><svg width="56" height="28" viewBox="0 0 44 22"><path d="M21 12C17 4 9 3 3 6c3 1 3 4 1 6 4 0 6 2 6 5 3-3 7-4 11-5Z" fill="#2f6b4f"/><path d="M23 12c4-8 12-9 18-6-3 1-3 4-1 6-4 0-6 2-6 5-3-3-7-4-11-5Z" fill="#1d4d3a"/><circle cx="19" cy="14" r="3.4" fill="#b81d34"/><circle cx="25" cy="14" r="3.4" fill="#b81d34"/><circle cx="22" cy="9.5" r="3.4" fill="#d22b43"/></svg></div>
 </header>
@@ -132,7 +154,7 @@ footer{color:var(--soft);font-size:14px;text-align:center;padding:0 16px 40px;te
 <dialog id="dlgPerson" aria-labelledby="pTitle"><form method="dialog" id="fPerson">
   <h3 id="pTitle">Add a person</h3>
   <label class="field"><span>Name</span><input id="pName" maxlength="40" required autocomplete="off"></label>
-  <div class="actions"><button class="ghost" value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Save</button></div>
+  <div class="actions"><button class="ghost" type="button" value="cancel">Cancel</button><button class="primary" value="ok">Save</button></div>
 </form></dialog>
 
 <dialog id="dlgItem" aria-labelledby="iTitle"><form method="dialog" id="fItem">
@@ -140,7 +162,7 @@ footer{color:var(--soft);font-size:14px;text-align:center;padding:0 16px 40px;te
   <label class="field"><span>What is it?</span><input id="iName" maxlength="120" required autocomplete="off" placeholder="Wool hiking socks, size M"></label>
   <label class="field"><span>Link (optional)</span><input id="iUrl" maxlength="1000" inputmode="url" autocomplete="off" placeholder="https://…"></label>
   <label class="field"><span>Notes (optional)</span><input id="iNotes" maxlength="200" autocomplete="off" placeholder="Size, color, any store is fine…"></label>
-  <div class="actions"><button class="ghost" value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Save</button></div>
+  <div class="actions"><button class="ghost" type="button" value="cancel">Cancel</button><button class="primary" value="ok">Save</button></div>
 </form></dialog>
 
 <dialog id="dlgConfirm" aria-labelledby="cTitle" aria-describedby="cBody"><form method="dialog">
@@ -149,11 +171,28 @@ footer{color:var(--soft);font-size:14px;text-align:center;padding:0 16px 40px;te
   <div class="actions"><button class="ghost" value="cancel">Cancel</button><button class="primary" value="ok" id="cOk">Yes</button></div>
 </form></dialog>
 
-<dialog id="dlgWho" aria-labelledby="wTitle"><form method="dialog">
-  <h3 id="wTitle">Who's looking?</h3>
-  <p>Pick your name so we can hide what's been bought from your own list.</p>
-  <div class="picks" id="whoPicks"></div>
-  <div class="actions"><button class="ghost" value="">I'm not on the list</button></div>
+<dialog id="dlgWho" class="full" aria-labelledby="wTitle"><div class="whobox">
+  <div class="step" id="whoPick">
+    <h3 id="wTitle" tabindex="-1">Who are you?</h3>
+    <p class="status" id="whoNote" role="status"></p>
+    <p>Tap your name. This device will remember you, and keep what's been bought for you a surprise.</p>
+    <div class="picks" id="whoPicks"></div>
+    <form class="join" id="fJoin"><label for="joinName" id="joinLabel">Not on the list? Write your name</label>
+      <div class="row"><input id="joinName" maxlength="40" required autocomplete="off"><button class="primary">Join</button></div></form>
+    <div class="actions"><button class="ghost" type="button" id="whoBack" hidden></button></div>
+  </div>
+  <div class="step" id="whoSure" hidden>
+    <h3 id="sTitle" tabindex="-1"></h3>
+    <p id="sBody"></p>
+    <div class="actions"><button class="primary" type="button" id="sYes">Yes, that's me</button><button class="ghost" type="button" id="sNo">No, go back</button></div>
+  </div>
+</div></dialog>
+
+<dialog id="dlgLink" aria-labelledby="lTitle"><form method="dialog">
+  <h3 id="lTitle">Personal link</h3>
+  <p id="lBody"></p>
+  <label class="field"><span>Link</span><input id="lUrl" readonly></label>
+  <div class="actions"><button class="ghost" value="cancel">Close</button><button class="primary" type="button" id="lCopy">Copy link</button></div>
 </form></dialog>
 
 <dialog id="dlgCode" aria-labelledby="kTitle" aria-describedby="codeMsg"><form method="dialog">

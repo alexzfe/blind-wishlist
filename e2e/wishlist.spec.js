@@ -42,7 +42,7 @@ const SCREENS = [
   { name: 'tablet sideways', viewport: { width: 1180, height: 820 }, isMobile: true }
 ];
 
-// A family member's device. With a passcode already entered unless told otherwise.
+// A family member's device. With a passcode already entered unless told otherwise. Without `me` it doesn't know who it is yet.
 // Pass a screen from SCREENS to make it a touch phone or tablet; otherwise it's a desktop browser.
 async function device({ code = CODE, me, screen } = {}) {
   const ctx = await browser.newContext(screen ? { viewport: screen.viewport, isMobile: screen.isMobile, hasTouch: true } : {});
@@ -50,7 +50,7 @@ async function device({ code = CODE, me, screen } = {}) {
     if (sessionStorage.getItem('seeded')) return; // only before the first load, so reloads keep what the page saved
     sessionStorage.setItem('seeded', '1');
     if (c) localStorage.setItem('wishlist.code', c);
-    if (m !== undefined) { localStorage.setItem('wishlist.me', m); localStorage.setItem('wishlist.asked', '1'); }
+    if (m) localStorage.setItem('wishlist.me', m);
   }, [code, me]);
   const page = await ctx.newPage();
   await page.goto(base);
@@ -80,12 +80,12 @@ test('the passcode keeps the lists locked until the right one is entered, then t
 
   await dlg.getByLabel('Passcode').fill(CODE);
   await dlg.getByRole('button', { name: 'Open the lists' }).click();
-  await page.getByRole('button', { name: 'Add the first person' }).click();
-  const add = page.getByRole('dialog', { name: 'Add a person' });
-  await add.getByLabel('Name').fill('Ana');
-  await add.getByRole('button', { name: 'Save' }).click();
+  const who = page.getByRole('dialog', { name: 'Who are you?' });
+  await who.getByLabel('Write your name to start the family lists').fill('Ana');
+  await who.getByRole('button', { name: 'Join' }).click();
+  await who.getByText('Join as Ana?').waitFor();
+  await who.getByRole('button', { name: "Yes, that's me" }).click();
 
-  // The first person added on a device becomes "me" there.
   await card(page, 'Ana').getByText("This is your list, so we're keeping purchases a surprise.").waitFor();
   await page.context().close();
 });
@@ -166,7 +166,7 @@ test('a wish can be edited and removed, and a person renamed', async () => {
 
 test('removing a person removes their list for everyone', async () => {
   await person('Gus', ['Kite']);
-  const page = await device({ me: '' });
+  const page = await device({ me: await person('Gwen') });
   await card(page, 'Gus').getByRole('button', { name: 'Remove Gus' }).click();
   await page.getByRole('dialog', { name: 'Remove Gus?' }).getByRole('button', { name: 'Remove' }).click();
   await card(page, 'Gus').waitFor({ state: 'detached' });
@@ -186,7 +186,7 @@ for (const screen of SCREENS) {
     assert.strictEqual(sideways, false, 'the page should not scroll sideways');
 
     // Links inside a wish's title are text, so they're exempt; every other control needs a 40px finger target.
-    const tooSmall = await page.locator('button, select, .it-act a').evaluateAll(els => els
+    const tooSmall = await page.locator('button, .it-act a').evaluateAll(els => els
       .filter(e => e.offsetParent)
       .map(e => ({ what: (e.getAttribute('aria-label') || e.textContent).trim(), ...e.getBoundingClientRect().toJSON() }))
       .filter(r => r.height < 40 || r.width < 40)
@@ -222,16 +222,164 @@ for (const screen of SCREENS) {
   });
 }
 
-// Known gap, kept visible until it's fixed: a centred dialog sits under the on-screen keyboard, hiding Save.
-// Remove "todo" once dialogs sit near the top on phones.
+// A centred dialog would sit under the on-screen keyboard and hide Save, so on phones dialogs sit at the top.
+// Phones too short to fit Save above the keyboard rely on Go saving instead (tested below).
 for (const screen of SCREENS.filter(s => s.viewport.width < 600)) {
-  test(`on a ${screen.name}, dialogs sit near the top so the keyboard can't cover Save`, { todo: 'dialogs are still centred on phones' }, async () => {
+  test(`on a ${screen.name}, dialogs sit at the top of the screen, with Save above the keyboard where it fits`, async () => {
     const me = await person(`Lu ${screen.name}`);
     const page = await device({ me, screen });
     await card(page, `Lu ${screen.name}`).getByRole('button', { name: '+ Add a wish' }).tap();
-    const save = await page.getByRole('dialog', { name: 'Add a wish' }).getByRole('button', { name: 'Save' }).boundingBox();
+    const dlg = page.getByRole('dialog', { name: 'Add a wish' });
+    const box = await dlg.boundingBox(), save = await dlg.getByRole('button', { name: 'Save' }).boundingBox();
     await page.context().close();
-    // A phone keyboard takes roughly the bottom 45% of the screen.
-    assert.ok(save.y + save.height < screen.viewport.height * 0.55, `Save ends at ${Math.round(save.y + save.height)}px of ${screen.viewport.height}px`);
+    assert.ok(box.y <= 24, `dialog starts ${Math.round(box.y)}px down`);
+    // A phone keyboard is about 300px tall. On the smallest phones nothing fits above it, so Go on the keyboard has to save (tested below).
+    if (screen.viewport.height >= 800) assert.ok(save.y + save.height < screen.viewport.height - 300, `Save ends at ${Math.round(save.y + save.height)}px of ${screen.viewport.height}px`);
   });
 }
+
+test('pressing Go on a phone keyboard saves the wish instead of throwing it away', async () => {
+  const me = await person('Max');
+  const page = await device({ me, screen: SCREENS[0] });
+  await card(page, 'Max').getByRole('button', { name: '+ Add a wish' }).tap();
+  const field = page.getByRole('dialog', { name: 'Add a wish' }).getByLabel('What is it?');
+  await field.fill('Snow boots');
+  await field.press('Enter');
+  await wish(page, 'Max', 'Snow boots').waitFor();
+  await page.context().close();
+});
+
+test('Cancel closes a form without saving', async () => {
+  const me = await person('Nia');
+  const page = await device({ me, screen: SCREENS[1] });
+  await card(page, 'Nia').getByRole('button', { name: '+ Add a wish' }).tap();
+  const dlg = page.getByRole('dialog', { name: 'Add a wish' });
+  await dlg.getByLabel('What is it?').fill('Not this one');
+  await dlg.getByRole('button', { name: 'Cancel' }).tap();
+  await dlg.waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => !document.body.classList.contains('busy'));
+  assert.ok(!(await api('GET', '/api/data')).data.items.some(i => i.title === 'Not this one'));
+  await page.context().close();
+});
+
+const who = page => page.getByRole('dialog', { name: 'Who are you?' });
+const banner = page => page.locator('#meBar');
+
+test('a new device must say who it is on a screen that covers everything, and confirm it', async () => {
+  await person('Opal'); await person('Olly');
+  const page = await device({ screen: SCREENS[1] });
+  const box = await who(page).boundingBox();
+  assert.deepStrictEqual([box.width, box.height], [SCREENS[1].viewport.width, SCREENS[1].viewport.height]);
+  assert.strictEqual(await page.getByText('Just browsing').count(), 0);
+
+  // Escape (even twice) doesn't skip it.
+  await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+  await page.waitForFunction(() => document.getElementById('dlgWho').open);
+  assert.ok(await who(page).isVisible());
+
+  // A wrong tap can be taken back.
+  await who(page).getByRole('button', { name: 'Olly', exact: true }).tap();
+  await who(page).getByText("You're Olly?").waitFor();
+  await who(page).getByRole('button', { name: 'No, go back' }).tap();
+  await who(page).getByRole('button', { name: 'Opal', exact: true }).tap();
+  await who(page).getByRole('button', { name: "Yes, that's me" }).tap();
+  await who(page).waitFor({ state: 'hidden' });
+  assert.strictEqual(await banner(page).locator('strong').textContent(), 'Opal');
+  await card(page, 'Opal').getByText("This is your list, so we're keeping purchases a surprise.").waitFor();
+  await page.context().close();
+});
+
+test('writing a name that is already on the list picks that person instead of adding a twin', async () => {
+  await person('Pia');
+  const page = await device();
+  await who(page).getByLabel('Not on the list? Write your name').fill(' pia ');
+  await who(page).getByRole('button', { name: 'Join' }).click();
+  await who(page).getByText("You're Pia?").waitFor();
+  await who(page).getByRole('button', { name: "Yes, that's me" }).click();
+  await who(page).waitFor({ state: 'hidden' });
+  assert.strictEqual((await api('GET', '/api/data')).data.people.filter(p => p.name.toLowerCase() === 'pia').length, 1);
+  await page.context().close();
+});
+
+test('"Not you?" lets someone switch, or go back to who they were', async () => {
+  const sam = await person('Sam'); await person('Tess');
+  const page = await device({ me: sam });
+  await banner(page).getByRole('button', { name: 'Not Sam?' }).click();
+  await who(page).getByRole('button', { name: "Go back, I'm Sam" }).click();
+  await who(page).waitFor({ state: 'hidden' });
+  await banner(page).getByRole('button', { name: 'Not Sam?' }).click();
+  await who(page).getByRole('button', { name: 'Tess', exact: true }).click();
+  await who(page).getByRole('button', { name: "Yes, that's me" }).click();
+  await banner(page).getByText('Tess', { exact: true }).waitFor();
+  await page.context().close();
+});
+
+async function linkFor(id) { return (await api('POST', `/api/people/${id}/link`)).link; }
+
+test('a personal link signs its person in once, and a forwarded copy no longer works', async () => {
+  const quinn = await person('Quinn'); const rex = await person('Rex');
+  const link = await linkFor(quinn);
+
+  // Opened by mistake on a device that already knows who it is: nothing changes, and the link isn't used up.
+  const rexPage = await device({ me: rex });
+  await rexPage.goto(base + '/?link=' + link);
+  await rexPage.getByText('already signed in as Rex').waitFor();
+  assert.strictEqual(await banner(rexPage).locator('strong').textContent(), 'Rex');
+
+  // Quinn's device doesn't have the passcode yet: the link waits until it's entered.
+  const page = await device({ code: '' });
+  await page.goto(base + '/?link=' + link);
+  const code = page.getByRole('dialog', { name: 'Family passcode' });
+  await code.getByLabel('Passcode').fill(CODE);
+  await code.getByRole('button', { name: 'Open the lists' }).click();
+  await banner(page).getByText('Quinn', { exact: true }).waitFor();
+  assert.ok(await who(page).isHidden());
+  assert.strictEqual(new URL(page.url()).search, '', 'the link is tidied out of the address bar');
+
+  // The same link opened on someone else's new device signs nobody in.
+  const other = await device();
+  await other.goto(base + '/?link=' + link);
+  await who(other).getByText('That personal link was already used').waitFor();
+  for (const p of [page, other, rexPage]) await p.context().close();
+});
+
+test("a card's personal link stays the same until it is used", async () => {
+  const sol = await person('Sol');
+  const page = await device({ me: sol });
+  const open = async () => {
+    await card(page, 'Sol').getByRole('button', { name: 'Personal link for Sol' }).click();
+    const dlg = page.getByRole('dialog', { name: "Sol's personal link" });
+    const url = await dlg.getByLabel('Link').inputValue();
+    await dlg.getByRole('button', { name: 'Close' }).click();
+    return url;
+  };
+  const first = await open();
+  assert.match(first, /\/\?link=[\w-]{20,}$/);
+  assert.strictEqual(await open(), first);
+  await page.context().close();
+});
+
+test('a made-up link signs nobody in', async () => {
+  const page = await device();
+  await page.goto(base + '/?link=made-up');
+  await who(page).getByText('That personal link was already used').waitFor();
+  assert.ok(await banner(page).isHidden());
+  await page.context().close();
+});
+
+test('holding Enter in the name box stops at the question, and pressing Yes twice adds the person once', async () => {
+  const page = await device();
+  const name = who(page).getByLabel(/Write your name/);
+  await name.fill('Vera Twice');
+  await name.press('Enter'); await page.keyboard.press('Enter'); await page.keyboard.press('Enter');
+  await who(page).getByText('Join as Vera Twice?').waitFor();
+  assert.ok(await who(page).isVisible(), 'still asking');
+
+  const yes = who(page).getByRole('button', { name: "Yes, that's me" });
+  await yes.focus();
+  await page.keyboard.press('Enter'); await page.keyboard.press('Enter');
+  await who(page).waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => !document.body.classList.contains('busy'));
+  assert.strictEqual((await api('GET', '/api/data')).data.people.filter(p => p.name === 'Vera Twice').length, 1);
+  await page.context().close();
+});

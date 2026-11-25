@@ -73,6 +73,26 @@ test('fonts are cached by browsers, while the page itself always comes fresh', a
   assert.strictEqual((await fetch(base + '/')).headers.get('cache-control'), 'no-store');
 });
 
+test('the icon for phone home screens and browser tabs is served', async () => {
+  const r = await fetch(base + '/icon.png');
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.headers.get('content-type'), 'image/png');
+});
+
+test('a personal link works once, and asking for it again before then gives the same link', async () => {
+  const h = { 'Content-Type': 'application/json', 'X-Family-Code': CODE };
+  const post = (p, body) => fetch(base + p, { method: 'POST', headers: h, body: JSON.stringify(body || {}) });
+  const { id } = await (await post('/api/people', { name: 'Rose' })).json();
+  const { link } = await (await post(`/api/people/${id}/link`)).json();
+  assert.strictEqual((await (await post(`/api/people/${id}/link`)).json()).link, link);
+  assert.ok(!JSON.stringify(await (await fetch(base + '/api/data', { headers: h })).json()).includes(link), 'the secret is not shown to everyone');
+
+  const first = await post(`/api/links/${link}`);
+  assert.strictEqual((await first.json()).personId, id);
+  assert.strictEqual((await post(`/api/links/${link}`)).status, 410);
+  assert.notStrictEqual((await (await post(`/api/people/${id}/link`)).json()).link, link, 'a used link is replaced by a new one');
+});
+
 test('in production the server refuses to start without a passcode', async () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'wishlist-test-'));
   const proc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
