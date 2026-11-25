@@ -43,15 +43,17 @@ const SCREENS = [
 ];
 
 // A family member's device. With a passcode already entered unless told otherwise. Without `me` it doesn't know who it is yet.
+// `admin` starts it in admin mode, as if "Nobody" had been tapped 5 times.
 // Pass a screen from SCREENS to make it a touch phone or tablet; otherwise it's a desktop browser.
-async function device({ code = CODE, me, screen } = {}) {
+async function device({ code = CODE, me, screen, admin } = {}) {
   const ctx = await browser.newContext(screen ? { viewport: screen.viewport, isMobile: screen.isMobile, hasTouch: true } : {});
-  await ctx.addInitScript(([c, m]) => {
+  await ctx.addInitScript(([c, m, a]) => {
     if (sessionStorage.getItem('seeded')) return; // only before the first load, so reloads keep what the page saved
     sessionStorage.setItem('seeded', '1');
     if (c) localStorage.setItem('wishlist.code', c);
     if (m) localStorage.setItem('wishlist.me', m);
-  }, [code, me]);
+    if (a) localStorage.setItem('wishlist.admin', '1');
+  }, [code, me, admin]);
   const page = await ctx.newPage();
   await page.goto(base);
   return page;
@@ -141,7 +143,7 @@ test('a link that is not a web address stops Save and keeps the old link', async
 
 test('a wish can be edited and removed, and a person renamed', async () => {
   const hal = await person('Hal', ['Gloves']);
-  const page = await device({ me: hal });
+  const page = await device({ me: hal, admin: true });
   await wish(page, 'Hal', 'Gloves').getByRole('button', { name: 'Edit' }).click();
   const dlg = page.getByRole('dialog', { name: 'Edit wish' });
   await dlg.getByLabel('What is it?').fill('Warm gloves');
@@ -166,7 +168,7 @@ test('a wish can be edited and removed, and a person renamed', async () => {
 
 test('removing a person removes their list for everyone', async () => {
   await person('Gus', ['Kite']);
-  const page = await device({ me: await person('Gwen') });
+  const page = await device({ me: await person('Gwen'), admin: true });
   await card(page, 'Gus').getByRole('button', { name: 'Remove Gus' }).click();
   await page.getByRole('dialog', { name: 'Remove Gus?' }).getByRole('button', { name: 'Remove' }).click();
   await card(page, 'Gus').waitFor({ state: 'detached' });
@@ -179,7 +181,7 @@ for (const screen of SCREENS) {
     const me = await person(`Ivy ${screen.name}`, ['Mittens']);
     await person(`Uncle Bartholomew-Fitzgerald ${screen.name}`);
     await api('POST', '/api/items', { personId: me, title: 'A very long wish for a cast iron skillet with a lid and a matching trivet', url: 'https://www.example-store-with-a-very-long-domain-name.com/products/skillet?ref=abcdefghijklmnopqrstuvwxyz0123456789', notes: 'Any colour except orange' });
-    const page = await device({ me, screen });
+    const page = await device({ me, screen, admin: true });
     await card(page, `Ivy ${screen.name}`).waitFor();
 
     const sideways = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
@@ -381,5 +383,77 @@ test('holding Enter in the name box stops at the question, and pressing Yes twic
   await who(page).waitFor({ state: 'hidden' });
   await page.waitForFunction(() => !document.body.classList.contains('busy'));
   assert.strictEqual((await api('GET', '/api/data')).data.people.filter(p => p.name === 'Vera Twice').length, 1);
+  await page.context().close();
+});
+
+/* ---------- admin mode ---------- */
+
+const nobody = page => page.locator('#nobody');
+const note = page => page.locator('#adminNote');
+// What only admin mode shows on someone else's card.
+async function adminButtons(page, owner, title) {
+  const c = card(page, owner);
+  return [
+    await c.getByRole('button', { name: `Rename ${owner}` }).count(),
+    await c.getByRole('button', { name: `Remove ${owner}` }).count(),
+    await c.getByRole('button', { name: `+ Add a wish for ${owner}` }).count(),
+    await wish(page, owner, title).getByRole('button', { name: 'Edit' }).count()
+  ];
+}
+
+test('without admin mode, only your own list and "I bought this" are editable', async () => {
+  const me = await person('Wren', ['Hat']); await person('Xavi', ['Book']);
+  const page = await device({ me });
+  await wish(page, 'Xavi', 'Book').getByRole('button', { name: 'I bought this' }).waitFor();
+  assert.deepStrictEqual(await adminButtons(page, 'Xavi', 'Book'), [0, 0, 0, 0]);
+  assert.strictEqual(await page.locator('[data-act=edit-person], [data-act=del-person]').count(), 0, 'not drawn at all, not just hidden');
+  // Your own list, the personal links and adding a person stay.
+  await card(page, 'Wren').getByRole('button', { name: '+ Add a wish' }).waitFor();
+  await wish(page, 'Wren', 'Hat').getByRole('button', { name: 'Edit' }).waitFor();
+  await wish(page, 'Wren', 'Hat').getByRole('button', { name: 'Remove' }).waitFor();
+  await card(page, 'Xavi').getByRole('button', { name: 'Personal link for Xavi' }).waitFor();
+  await page.getByRole('button', { name: '+ Add a person' }).waitFor();
+  assert.ok(await banner(page).getByRole('button', { name: 'Admin off' }).isHidden());
+  await page.context().close();
+});
+
+test('5 taps on "Nobody" turn admin mode on, it survives a reload, and "Admin off" turns it off', async () => {
+  const me = await person('Yara'); await person('Zed', ['Drum']);
+  const page = await device({ me, screen: SCREENS[1] });
+  await wish(page, 'Zed', 'Drum').waitFor();
+  for (const [n, says] of [[1, ''], [2, ''], [3, '2 more taps…'], [4, '1 more tap…'], [5, 'Admin is on.']]) {
+    await nobody(page).tap();
+    assert.strictEqual(await note(page).textContent(), says, `after tap ${n}`);
+  }
+  await banner(page).getByRole('button', { name: 'Admin off' }).tap();
+  assert.strictEqual(await note(page).textContent(), '', 'turning admin off clears the note');
+  for (let i = 0; i < 5; i++) await nobody(page).tap();
+  assert.deepStrictEqual(await adminButtons(page, 'Zed', 'Drum'), [1, 1, 1, 1]);
+  const off = banner(page).getByRole('button', { name: 'Admin off' });
+  assert.ok(await off.isVisible());
+
+  await page.reload();
+  await wish(page, 'Zed', 'Drum').getByRole('button', { name: 'Edit' }).waitFor();
+  await nobody(page).tap(); await nobody(page).tap(); await nobody(page).tap(); // ignored while admin is on
+  await off.tap();
+  assert.deepStrictEqual(await adminButtons(page, 'Zed', 'Drum'), [0, 0, 0, 0]);
+  assert.ok(await off.isHidden());
+  assert.strictEqual(await page.evaluate(() => document.activeElement.id), 'meChange', 'focus moves to the Switch button');
+  await page.reload();
+  await wish(page, 'Zed', 'Drum').waitFor();
+  assert.deepStrictEqual(await adminButtons(page, 'Zed', 'Drum'), [0, 0, 0, 0]);
+  await page.context().close();
+});
+
+test('slow taps on "Nobody" start the count again', async () => {
+  const me = await person('Abe'); await person('Bea', ['Yo-yo']);
+  const page = await device({ me });
+  await wish(page, 'Bea', 'Yo-yo').waitFor();
+  for (let i = 0; i < 4; i++) await nobody(page).click();
+  assert.strictEqual(await note(page).textContent(), '1 more tap…');
+  await page.waitForTimeout(2100);
+  await nobody(page).click();
+  assert.strictEqual(await note(page).textContent(), '');
+  assert.deepStrictEqual(await adminButtons(page, 'Bea', 'Yo-yo'), [0, 0, 0, 0]);
   await page.context().close();
 });

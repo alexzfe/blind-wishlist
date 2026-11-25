@@ -25,6 +25,14 @@ To spare someone the "Who are you?" step, tap the link icon on their card and se
 
 The link doesn't include the family passcode, so they still enter that once. Until a link is used, the button keeps showing the same one, and after it's used the button makes a new one. Opening a link in a chat app's preview doesn't use it up.
 
+## Admin mode
+
+Most of the family only needs their own list and "I bought this" on everyone else's, so that's all the page shows. Renaming or removing a person, and adding or editing wishes on someone else's list, appear only in admin mode.
+
+To turn it on, tap the word "Nobody" in the line under the title 5 times quickly (a note counts down from the third tap). The device remembers it. To turn it off, tap "Admin off" at the top next to your name.
+
+This is to avoid accidents and clutter, not security: anyone with the passcode can still change anything.
+
 ## Settings
 
 All settings are optional environment variables.
