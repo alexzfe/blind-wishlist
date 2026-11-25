@@ -5,6 +5,7 @@
 //   PORT         Port to listen on. Default 3000.
 //   HOST         Address to listen on. Default 0.0.0.0 (all).
 //   DATA_FILE    Where the lists are saved. Default ./data/wishlists.json
+//                A daily copy goes in a "backups" folder next to it (last 14 days kept).
 //   FAMILY_CODE  A shared passcode. If set, the page asks for it once per device
 //                and nothing can be read or changed without it.
 
@@ -36,9 +37,30 @@ function load() {
   }
 }
 
+// Before the first change of each day, copy the lists into backups/ and keep the last 14 copies.
+const BACKUP_DIR = path.join(path.dirname(DATA_FILE), 'backups');
+const KEEP_BACKUPS = 14;
+function backup() {
+  if (!fs.existsSync(DATA_FILE)) return;
+  const d = new Date();
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const base = path.basename(DATA_FILE, '.json');
+  const target = path.join(BACKUP_DIR, `${base}-${day}.json`);
+  if (fs.existsSync(target)) return;
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    fs.copyFileSync(DATA_FILE, target);
+    const old = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith(base + '-') && f.endsWith('.json')).sort();
+    for (const f of old.slice(0, -KEEP_BACKUPS)) fs.unlinkSync(path.join(BACKUP_DIR, f));
+  } catch (e) {
+    console.error('Could not make a backup:', e.message); // never block saving the lists
+  }
+}
+
 // Write to a temp file then rename, so a crash mid-write never corrupts the lists.
 function save() {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+  backup();
   const tmp = DATA_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
   fs.renameSync(tmp, DATA_FILE);

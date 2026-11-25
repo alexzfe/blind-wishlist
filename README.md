@@ -78,7 +78,9 @@ wishlist.example.com {
 
 ## Backups
 
-Copy `data/wishlists.json` somewhere safe now and then. To restore, stop the server, put the file back and start the server again.
+Before the first change each day, the server copies the lists to `data/backups/wishlists-YYYY-MM-DD.json` and keeps the last 14 days. These copies sit on the same disk, so for real safety also copy the `data` folder somewhere else now and then.
+
+To restore, stop the server, copy the backup you want over `data/wishlists.json` and start the server again.
 
 ## Good to know
 
