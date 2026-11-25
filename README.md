@@ -19,7 +19,7 @@ All settings are optional environment variables.
 
 | Variable      | Default                  | What it does |
 |---------------|--------------------------|--------------|
-| `FAMILY_CODE` | (none)                   | A shared passcode. Each device asks for it once. **Strongly recommended on a public server.** Without it, anyone who finds the address can see and edit the lists. |
+| `FAMILY_CODE` | (none)                   | A shared passcode. Each device asks for it once. **Strongly recommended on a public server.** Without it, anyone who finds the address can see and edit the lists. Pick a few random words (like `maple-sled-cocoa-42`), not a short PIN: after 10 wrong tries an address is locked out for 10 minutes, but someone with many addresses can keep guessing. |
 | `PORT`        | `3000`                   | Port to listen on. |
 | `HOST`        | `0.0.0.0`                | Address to listen on. Use `127.0.0.1` when it sits behind a reverse proxy on the same machine. |
 | `DATA_FILE`   | `./data/wishlists.json`  | Where the lists are saved. |
@@ -78,9 +78,17 @@ wishlist.example.com {
 
 ## Backups
 
-Copy `data/wishlists.json` somewhere safe now and then. To restore, stop the server, put the file back and start the server again.
+Before the first change each day, the server copies the lists to `data/backups/wishlists-YYYY-MM-DD.json` and keeps the last 14 days. These copies sit on the same disk, so for real safety also copy the `data` folder somewhere else now and then.
+
+To restore, stop the server, copy the backup you want over `data/wishlists.json` and start the server again.
+
+## Tests
+
+`npm test` runs the server tests (no browser needed). `npm run test:e2e` runs the browser tests: the first time, it installs Playwright into a git-ignored `.playwright/` folder (it isn't a project dependency), and it uses the system Chromium at `/usr/bin/chromium` (set `CHROME=/path/to/browser` for another one).
 
 ## Good to know
+
+- Behind a reverse proxy (Caddy, nginx) the server reads the visitor's address from the end of `X-Forwarded-For`, but only for requests coming from this machine or a private network. Make sure your proxy sets that header; Caddy does by default.
 
 - Nothing records who marked an item as bought. The data file does show which items are bought, so don't peek at it if you want your own gifts to stay a surprise.
 - Run only **one copy** of the server per data file.

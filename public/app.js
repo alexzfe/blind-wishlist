@@ -7,6 +7,7 @@ let people = [], items = [], loaded = false, busy = 0;
 let me = store.get('wishlist.me') || '';
 let code = store.get('wishlist.code') || '';
 let editing = null;
+let saves = 0; // counts saves, so a refresh that started before one doesn't draw old lists over it
 let askedWho = false;
 let askingCode = false;
 
@@ -54,13 +55,13 @@ function apply(data) {
 
 // Send a change to the server, then redraw with the fresh lists it returns.
 async function write(method, path, body) {
-  showErr(''); busy++; document.body.classList.add('busy');
+  showErr(''); busy++; saves++; document.body.classList.add('busy');
   try {
     const r = await api(method, path, body);
     if (r && r.data) apply(r.data);
     return r;
   } catch (e) {
-    if (e instanceof AuthError) askCode(true);
+    if (e instanceof AuthError) { showErr("That change wasn't saved because the passcode is needed. Enter it, then try again."); askCode(true); }
     else { showErr(e.message + ' Please try again.'); refresh(); }
   } finally {
     busy--; if (!busy) document.body.classList.remove('busy');
@@ -68,7 +69,12 @@ async function write(method, path, body) {
 }
 
 async function refresh() {
-  try { apply((await api('GET', '/api/data')).data); askWho(); }
+  const before = saves;
+  try {
+    const data = (await api('GET', '/api/data')).data;
+    if (saves !== before) return; // a save finished meanwhile and already drew newer lists
+    apply(data); askWho();
+  }
   catch (e) {
     if (e instanceof AuthError) askCode(!!code);
     else if (!loaded) $('hint').textContent = "Couldn't reach the lists. Check your connection and reload the page.";
@@ -117,6 +123,7 @@ function render() {
   const total = items.length;
   $('hint').textContent = `${people.length} ${people.length === 1 ? 'list' : 'lists'} · ${total} ${total === 1 ? 'wish' : 'wishes'}${me ? ' · your list is first' : ''}`;
 
+  const keep = focusKey();
   const ordered = [...people].sort((a, b) => (b.id === me) - (a.id === me) || a.name.localeCompare(b.name));
   grid.innerHTML = ordered.map(p => {
     const mine = p.id === me;
@@ -134,6 +141,21 @@ function render() {
       <div class="cfoot"><button class="add" type="button" data-act="add-item">+ Add a wish${mine ? '' : ' for ' + esc(p.name)}</button></div>
     </section>`;
   }).join('');
+  refocus(keep);
+}
+
+// Redrawing replaces the buttons, so put keyboard focus back on the same button (or the nearest one left).
+function focusKey() {
+  const f = document.activeElement;
+  if (!f || !$('grid').contains(f)) return null;
+  const li = f.closest('[data-item]'), card = f.closest('[data-person]');
+  return { act: f.dataset.act, item: li && li.dataset.item, person: card && card.dataset.person };
+}
+function refocus(k) {
+  if (!k) return;
+  const box = (k.item && document.querySelector(`[data-item="${CSS.escape(k.item)}"]`)) || (k.person && document.querySelector(`[data-person="${CSS.escape(k.person)}"]`));
+  const el = box && (box.querySelector(`[data-act="${k.act}"]`) || box.querySelector('a, button'));
+  if (el) el.focus();
 }
 
 function itemHTML(i, mine) {
@@ -186,6 +208,7 @@ function openItem(personId, it) {
   $('iTitle').textContent = it ? 'Edit wish' : (personId === me ? 'Add a wish' : `Add a wish for ${p ? p.name : ''}`);
   $('iName').value = it ? it.title : ''; $('iUrl').value = it ? it.url || '' : '';
   $('iNotes').value = it ? it.notes || '' : '';
+  checkUrl();
   $('dlgItem').returnValue = '';
   $('dlgItem').showModal();
 }
@@ -204,12 +227,17 @@ $('dlgPerson').addEventListener('close', async () => {
 $('dlgItem').addEventListener('close', async () => {
   if ($('dlgItem').returnValue !== 'ok') return;
   const title = $('iName').value.trim(); if (!title) return;
-  const raw = $('iUrl').value.trim(), url = safeUrl(raw);
+  const url = safeUrl($('iUrl').value);
   const data = { title, url, notes: $('iNotes').value.trim() };
   const e = editing;
-  const r = e.id ? await write('PATCH', `/api/items/${encodeURIComponent(e.id)}`, data) : await write('POST', '/api/items', { ...data, personId: e.personId });
-  if (r && raw && !url) showErr("That link didn't look like a web address, so it wasn't saved. Edit the wish to try again.");
+  if (e.id) write('PATCH', `/api/items/${encodeURIComponent(e.id)}`, data); else write('POST', '/api/items', { ...data, personId: e.personId });
 });
+// A link that isn't a web address stops Save with a message on the field, so nothing half-saves.
+function checkUrl() {
+  const raw = $('iUrl').value.trim();
+  $('iUrl').setCustomValidity(raw && !safeUrl(raw) ? "That doesn't look like a web address. Fix it or leave it empty." : '');
+}
+$('iUrl').addEventListener('input', checkUrl);
 
 $('addPerson').addEventListener('click', () => openPerson(null));
 document.addEventListener('click', async ev => {

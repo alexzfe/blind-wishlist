@@ -4,6 +4,6 @@
   "description": "Family Christmas wishlists with anonymous 'I bought this' marks",
   "main": "server.js",
   "private": true,
-  "scripts": { "start": "node server.js" },
+  "scripts": { "start": "node server.js", "test": "node --test", "test:e2e": "sh e2e/run.sh" },
   "engines": { "node": ">=18" }
 }

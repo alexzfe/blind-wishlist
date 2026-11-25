@@ -5,6 +5,7 @@
 //   PORT         Port to listen on. Default 3000.
 //   HOST         Address to listen on. Default 0.0.0.0 (all).
 //   DATA_FILE    Where the lists are saved. Default ./data/wishlists.json
+//                A daily copy goes in a "backups" folder next to it (last 14 days kept).
 //   FAMILY_CODE  A shared passcode. If set, the page asks for it once per device
 //                and nothing can be read or changed without it.
 
@@ -36,9 +37,30 @@ function load() {
   }
 }
 
+// Before the first change of each day, copy the lists into backups/ and keep the last 14 copies.
+const BACKUP_DIR = path.join(path.dirname(DATA_FILE), 'backups');
+const KEEP_BACKUPS = 14;
+function backup() {
+  if (!fs.existsSync(DATA_FILE)) return;
+  const d = new Date();
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const base = path.basename(DATA_FILE, '.json');
+  const target = path.join(BACKUP_DIR, `${base}-${day}.json`);
+  if (fs.existsSync(target)) return;
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    fs.copyFileSync(DATA_FILE, target);
+    const old = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith(base + '-') && f.endsWith('.json')).sort();
+    for (const f of old.slice(0, -KEEP_BACKUPS)) fs.unlinkSync(path.join(BACKUP_DIR, f));
+  } catch (e) {
+    console.error('Could not make a backup:', e.message); // never block saving the lists
+  }
+}
+
 // Write to a temp file then rename, so a crash mid-write never corrupts the lists.
 function save() {
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+  backup();
   const tmp = DATA_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
   fs.renameSync(tmp, DATA_FILE);
@@ -144,10 +166,19 @@ const routes = [
 
 /* ---------- passcode ---------- */
 
+// Behind a reverse proxy every request comes from the proxy, so use the visitor's address it adds
+// at the end of X-Forwarded-For. Only trust that header from this machine or a private network.
+const PROXY = /^(::ffff:)?(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)|^::1$/;
+function clientIp(req) {
+  const ip = req.socket.remoteAddress || '?';
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',').pop().trim();
+  return PROXY.test(ip) && fwd ? fwd : ip;
+}
+
 const failures = new Map(); // ip -> {count, until}
 function checkCode(req) {
   if (!FAMILY_CODE) return;
-  const ip = req.socket.remoteAddress || '?';
+  const ip = clientIp(req);
   const f = failures.get(ip);
   if (f && f.count >= 10 && Date.now() < f.until) throw new HttpError(429, 'Too many wrong passcodes. Try again in a few minutes.');
   const given = Buffer.from(String(req.headers['x-family-code'] || ''));
@@ -155,6 +186,7 @@ function checkCode(req) {
   const ok = given.length === want.length && crypto.timingSafeEqual(given, want);
   if (!ok) {
     if (given.length) {
+      if (failures.size > 1000) for (const [k, v] of failures) if (Date.now() >= v.until) failures.delete(k);
       const n = f && Date.now() < f.until ? f.count + 1 : 1;
       failures.set(ip, { count: n, until: Date.now() + 10 * 60 * 1000 });
     }
@@ -168,11 +200,15 @@ function checkCode(req) {
 const STATIC = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
-  '/app.js': ['app.js', 'text/javascript; charset=utf-8']
+  '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+  '/fonts/figtree-latin.woff2': ['fonts/figtree-latin.woff2', 'font/woff2'],
+  '/fonts/figtree-latin-ext.woff2': ['fonts/figtree-latin-ext.woff2', 'font/woff2'],
+  '/fonts/youngserif-latin.woff2': ['fonts/youngserif-latin.woff2', 'font/woff2'],
+  '/fonts/youngserif-latin-ext.woff2': ['fonts/youngserif-latin-ext.woff2', 'font/woff2']
 };
 
 const SECURITY_HEADERS = {
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'DENY'
