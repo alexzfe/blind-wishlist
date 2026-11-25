@@ -82,6 +82,10 @@ Before the first change each day, the server copies the lists to `data/backups/w
 
 To restore, stop the server, copy the backup you want over `data/wishlists.json` and start the server again.
 
+## Tests
+
+`npm test` runs the server tests (no browser needed). `npm run test:e2e` runs the browser tests: the first time, it installs Playwright into a git-ignored `.playwright/` folder (it isn't a project dependency), and it uses the system Chromium at `/usr/bin/chromium` (set `CHROME=/path/to/browser` for another one).
+
 ## Good to know
 
 - Behind a reverse proxy (Caddy, nginx) the server reads the visitor's address from the end of `X-Forwarded-For`, but only for requests coming from this machine or a private network. Make sure your proxy sets that header; Caddy does by default.
