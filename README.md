@@ -23,7 +23,7 @@ Each phone, tablet or computer remembers who is using it. The first time someone
 
 To spare someone the "Who are you?" step, tap the link icon on their card and send them the link it shows. The first device to open it is signed in as that person. Then the link stops working, so a forwarded copy can't sign anyone else in. If the wrong person opens it first, the right person sees "already used" and can tap their name or ask for a new link. A device that already knows who it is ignores personal links, so a link opened there by mistake stays unused.
 
-The link doesn't include the family passcode, so they still enter that once. Until a link is used, the button keeps showing the same one, and after it's used the button makes a new one. Opening a link in a chat app's preview doesn't use it up.
+The link also stands in for the family passcode, so they don't need to type it: using the link saves the passcode on their device. Once used, the link is worth nothing, so a forwarded copy still has to ask for the passcode. Until a link is used, the button keeps showing the same one, and after it's used the button makes a new one. Opening a link in a chat app's preview doesn't use it up.
 
 ## Settings
 

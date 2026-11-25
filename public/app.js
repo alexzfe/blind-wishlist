@@ -6,7 +6,7 @@ const store = {get(k){try{return localStorage.getItem(k)}catch{return null}}, se
 let people = [], items = [], loaded = false, busy = 0;
 let me = store.get('wishlist.me') || '';
 // A personal link (/?link=<secret>) signs this device in as one person, and works only once, so a forwarded copy can't.
-// It's used up below once the passcode is in, not by loading the page, so a chat app's link preview can't use it up.
+// It stands in for the passcode too. The page's script uses it up, not loading the page, so a chat app's link preview can't.
 let linkToken = new URLSearchParams(location.search).get('link') || '';
 let linkNote = '';
 function dropLink() { linkToken = ''; history.replaceState(null, '', location.pathname + location.hash); }
@@ -61,19 +61,22 @@ async function write(method, path, body) {
   }
 }
 
+// people is null when the lists couldn't load because this device has no passcode yet. Says whether it signed in.
 async function useLink(people) {
   // A device that already knows who it is leaves the link alone, so it still works for the person it was meant for.
-  const current = people.find(p => p.id === me);
-  if (current) { dropLink(); return showErr(`This device is already signed in as ${current.name}, so the personal link wasn't used. Not ${current.name}? Tap "Switch" at the top.`); }
+  const current = people && people.find(p => p.id === me);
+  if (current) { dropLink(); showErr(`This device is already signed in as ${current.name}, so the personal link wasn't used. Not ${current.name}? Tap "Switch" at the top.`); return false; }
   const t = linkToken; linkToken = ''; // cleared first, so two overlapping refreshes can't both use it
   try {
-    me = (await api('POST', `/api/links/${encodeURIComponent(t)}`)).personId;
-    store.set('wishlist.me', me);
+    const r = await api('POST', `/api/links/${encodeURIComponent(t)}`);
+    me = r.personId; store.set('wishlist.me', me);
+    if (r.code) { code = r.code; store.set('wishlist.code', code); }
     dropLink();
+    return true;
   } catch (e) {
-    if (e instanceof AuthError) { linkToken = t; throw e; } // tried again once the passcode is in
     if (e.status === 410) { dropLink(); linkNote = "That personal link was already used, so it can't sign anyone in. Tap your name below, or ask for a new link."; }
     else { linkNote = "Couldn't check your personal link just now. Reload the page to try again, or tap your name below."; } // the link stays in the address bar for the reload
+    return false;
   }
 }
 
@@ -86,7 +89,10 @@ async function refresh() {
     apply(data);
   }
   catch (e) {
-    if (e instanceof AuthError) askCode(!!code);
+    if (e instanceof AuthError) {
+      if (linkToken && await useLink(null)) return refresh(); // the link brought the passcode with it
+      askCode(!!code);
+    }
     else if (!loaded) $('hint').textContent = "Couldn't reach the lists. Check your connection and reload the page.";
   }
 }
@@ -246,7 +252,7 @@ async function openLink(p) {
   const r = await write('POST', `/api/people/${encodeURIComponent(p.id)}/link`);
   if (!r) return;
   $('lTitle').textContent = `${p.name}'s personal link`;
-  $('lBody').textContent = `Send this to ${p.name} only. It works once: the first phone or tablet to open it is signed in as ${p.name}, and then the link stops working. They'll still need the family passcode the first time.`;
+  $('lBody').textContent = `Send this to ${p.name} only. It works once: the first phone or tablet to open it is signed in as ${p.name}, and then the link stops working. They won't need the family passcode.`;
   $('lUrl').value = `${location.origin}/?link=${encodeURIComponent(r.link)}`;
   $('lCopy').textContent = 'Copy link';
   $('dlgLink').showModal();

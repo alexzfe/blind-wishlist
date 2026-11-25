@@ -110,6 +110,8 @@ function itemFields(b) {
 
 /* ---------- API ---------- */
 
+const LINK_USE = /^\/api\/links\/([\w-]+)$/;
+
 const routes = [
   ['GET', /^\/api\/data$/, () => ({ data: snapshot() })],
 
@@ -166,12 +168,13 @@ const routes = [
     return { link: p.link };
   }],
 
-  ['POST', /^\/api\/links\/([\w-]+)$/, (b, token) => {
+  // Using a link needs no passcode: the link stands in for it, and hands it over so this device keeps it.
+  ['POST', LINK_USE, (b, token) => {
     const p = db.people.find(x => x.link && x.link === token);
     if (!p) throw new HttpError(410, 'This link has already been used.');
     delete p.link;
     save();
-    return { personId: p.id };
+    return { personId: p.id, code: FAMILY_CODE };
   }],
 
   // Marks bought / not bought. Nothing about who did it is stored.
@@ -274,7 +277,7 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/')) {
       // Only accept JSON writes from this page (blocks cross-site form posts).
       if (req.method !== 'GET' && !(req.headers['content-type'] || '').startsWith('application/json')) throw new HttpError(415, 'Bad request.');
-      checkCode(req);
+      if (!(req.method === 'POST' && LINK_USE.test(p))) checkCode(req);
       for (const [method, re, handler] of routes) {
         const m = p.match(re);
         if (m && req.method === method) {

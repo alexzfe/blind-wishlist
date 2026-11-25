@@ -87,9 +87,13 @@ test('a personal link works once, and asking for it again before then gives the 
   assert.strictEqual((await (await post(`/api/people/${id}/link`)).json()).link, link);
   assert.ok(!JSON.stringify(await (await fetch(base + '/api/data', { headers: h })).json()).includes(link), 'the secret is not shown to everyone');
 
-  const first = await post(`/api/links/${link}`);
-  assert.strictEqual((await first.json()).personId, id);
-  assert.strictEqual((await post(`/api/links/${link}`)).status, 410);
+  // Opened on a new phone that has no passcode yet: the link alone signs it in, and hands over the passcode.
+  const use = () => fetch(base + `/api/links/${link}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  const first = await use();
+  assert.deepStrictEqual(await first.json(), { personId: id, code: CODE });
+  const again = await use();
+  assert.strictEqual(again.status, 410);
+  assert.ok(!JSON.stringify(await again.json()).includes(CODE), 'a used link gives nothing away');
   assert.notStrictEqual((await (await post(`/api/people/${id}/link`)).json()).link, link, 'a used link is replaced by a new one');
 });
 
