@@ -166,10 +166,19 @@ const routes = [
 
 /* ---------- passcode ---------- */
 
+// Behind a reverse proxy every request comes from the proxy, so use the visitor's address it adds
+// at the end of X-Forwarded-For. Only trust that header from this machine or a private network.
+const PROXY = /^(::ffff:)?(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)|^::1$/;
+function clientIp(req) {
+  const ip = req.socket.remoteAddress || '?';
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',').pop().trim();
+  return PROXY.test(ip) && fwd ? fwd : ip;
+}
+
 const failures = new Map(); // ip -> {count, until}
 function checkCode(req) {
   if (!FAMILY_CODE) return;
-  const ip = req.socket.remoteAddress || '?';
+  const ip = clientIp(req);
   const f = failures.get(ip);
   if (f && f.count >= 10 && Date.now() < f.until) throw new HttpError(429, 'Too many wrong passcodes. Try again in a few minutes.');
   const given = Buffer.from(String(req.headers['x-family-code'] || ''));
@@ -177,6 +186,7 @@ function checkCode(req) {
   const ok = given.length === want.length && crypto.timingSafeEqual(given, want);
   if (!ok) {
     if (given.length) {
+      if (failures.size > 1000) for (const [k, v] of failures) if (Date.now() >= v.until) failures.delete(k);
       const n = f && Date.now() < f.until ? f.count + 1 : 1;
       failures.set(ip, { count: n, until: Date.now() + 10 * 60 * 1000 });
     }
