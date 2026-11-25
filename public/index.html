@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Family Christmas Wishlists</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/*
+VOICE: warm, homey, a little festive — a family thing, not an app store.
+IDEA: the gift tags hung on a tree; each person's list is a tag-card, bought items get a "taken" ribbon.
+PICTURE: the lists themselves, in a grid of cards under a garland strip.
+COLOUR and TYPE: evergreen ground, snow-white cards, cranberry accent, gold for "taken"; Young Serif titles, Figtree body.
+LAYOUT: modest header with "I'm…" picker, then wrapping card grid; stacks to one column on phones.
+*/
+:root{color-scheme:light dark;
+--bg:light-dark(#f3f6f2,#0b231b);--band:light-dark(#14432f,#0f3326);--card:light-dark(#ffffff,#123428);
+--ink:light-dark(#10271e,#eef4ee);--soft:light-dark(#566b61,#a9bfb3);--line:light-dark(#dfe7e1,#24503f);
+--red:light-dark(#b3122d,#ff5a6e);--redbg:light-dark(#fbe9ec,#3a1820);--gold:light-dark(#8a6400,#f2c14e);--goldbg:light-dark(#fbf3dc,#33300f);
+--green:light-dark(#14432f,#7fd3a6)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Figtree,system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:"Young Serif",Georgia,serif;font-weight:400;line-height:1.05;margin:0;text-wrap:balance}
+header{background:var(--band);color:#f4f8f2;padding:28px max(5vw,16px) 0;position:relative}
+.top{max-width:1240px;margin:0 auto;display:flex;flex-wrap:wrap;gap:16px 24px;align-items:end;justify-content:space-between}
+header h1{font-size:clamp(32px,5vw,48px)}
+header p{margin:8px 0 0;color:#c7dccf;max-width:52ch}
+.me{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:6px 6px 6px 16px}
+.me label{font-weight:600;font-size:15px}
+.me select{background:#fff;color:#10271e;border:0;border-radius:999px;padding:8px 14px;font:inherit;font-size:16px;min-height:40px;max-width:200px}
+.garland{display:block;width:100%;height:46px;margin-top:20px}
+main{max-width:1240px;margin:0 auto;padding:28px max(5vw,16px) 64px}
+.bar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:20px}
+.bar .hint{color:var(--soft);font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr));gap:20px;align-items:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 0 var(--line),0 10px 24px -18px rgba(0,0,0,.35);overflow:hidden}
+.card.mine{outline:2px solid var(--gold);outline-offset:-2px}
+.chead{display:flex;align-items:center;gap:12px;padding:18px 18px 12px}
+.tag{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--red);color:#fff;font:20px "Young Serif",serif}
+.chead h2{font-size:24px}
+.chead .count{color:var(--soft);font-size:14px}
+.chead .tools{margin-left:auto;display:flex;gap:4px}
+.mynote{margin:0 18px 10px;padding:8px 12px;border-radius:10px;background:var(--goldbg);color:var(--gold);font-size:14px}
+ul{list-style:none;margin:0;padding:0 8px}
+li.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;padding:12px 10px;border-top:1px solid var(--line)}
+li.item:first-child{border-top:0}
+.it-title{font-weight:600;overflow-wrap:anywhere}
+.it-title a{color:var(--green);text-underline-offset:3px}
+.it-meta{grid-column:1;color:var(--soft);font-size:14px;overflow-wrap:anywhere}
+.it-act{grid-row:1/span 2;grid-column:2;display:flex;flex-direction:column;align-items:end;gap:6px}
+li.taken .it-title,li.taken .it-title a{text-decoration:line-through;text-decoration-color:var(--gold);color:var(--soft)}
+.ribbon{display:inline-flex;align-items:center;gap:6px;background:var(--goldbg);color:var(--gold);font-size:13px;font-weight:700;border-radius:999px;padding:4px 10px;white-space:nowrap}
+.empty{padding:6px 18px 14px;color:var(--soft);font-size:15px}
+.cfoot{padding:10px 18px 18px}
+button{font:inherit;cursor:pointer;border-radius:10px;min-height:44px;padding:0 16px;border:1px solid transparent}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.primary{background:var(--red);color:#fff;font-weight:600}
+.primary:hover{filter:brightness(1.08)}
+.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.ghost:hover{background:var(--bg)}
+.buy{background:var(--green);color:var(--card);font-weight:600;min-height:38px;padding:0 12px;font-size:14px;white-space:nowrap}
+.link{background:none;border:0;color:var(--soft);min-height:32px;padding:0 6px;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.icon{background:none;border:0;color:var(--soft);min-height:40px;min-width:40px;padding:0;display:grid;place-items:center}
+.icon:hover{color:var(--ink);background:var(--bg)}
+.add{width:100%;background:transparent;border:1.5px dashed var(--line);color:var(--green);font-weight:600}
+.add:hover{border-color:var(--green)}
+.welcome{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:32px;text-align:center;max-width:560px;margin:20px auto}
+.welcome h2{font-size:28px;margin-bottom:8px}
+.welcome p{color:var(--soft);margin:0 0 18px}
+.status{padding:10px 14px;border-radius:10px;background:var(--redbg);color:var(--red);margin-bottom:16px;font-size:15px}
+.status:empty{display:none}
+dialog{border:0;border-radius:18px;padding:0;width:min(480px,calc(100vw - 24px));background:var(--card);color:var(--ink);box-shadow:0 30px 60px -20px rgba(0,0,0,.5)}
+dialog::backdrop{background:rgba(6,25,18,.55)}
+dialog form{padding:24px;display:grid;gap:14px}
+dialog h3{font-size:24px}
+dialog p{margin:0;color:var(--soft)}
+.field{display:grid;gap:6px}
+.field span{font-weight:600;font-size:14px}
+input,textarea{font:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+textarea{min-height:72px;resize:vertical}
+
+.actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:end;margin-top:4px}
+.picks{display:flex;flex-wrap:wrap;gap:8px}
+.picks button{background:var(--bg);border-color:var(--line);color:var(--ink);font-weight:600}
+.picks button:hover{border-color:var(--green)}
+body.busy{cursor:progress}body.busy button{pointer-events:none;opacity:.7}
+footer{color:var(--soft);font-size:14px;text-align:center;padding:0 16px 40px}
+@media (max-width:600px){header{padding-top:22px}.me{width:100%;justify-content:space-between}.me select{max-width:60%}}
+@media (prefers-reduced-motion:no-preference){li.item{transition:background .25s}li.item.flash{background:var(--goldbg)}}
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div>
+      <h1>Family Christmas Wishlists</h1>
+      <p>Add what you'd love this year. When you buy something off someone's list, mark it so nobody doubles up. Nobody sees who bought it.</p>
+    </div>
+    <div class="me"><label for="meSel">I'm</label><select id="meSel"><option value="">Just browsing</option></select></div>
+  </div>
+  <svg class="garland" viewBox="0 0 1200 46" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M0 6 Q150 40 300 6 T600 6 T900 6 T1200 6" fill="none" stroke="#2f6b4f" stroke-width="3"/>
+    <g id="baubles"></g>
+  </svg>
+</header>
+<main>
+  <div class="status" id="status" role="status"></div>
+  <div class="bar">
+    <span class="hint" id="hint">Loading lists…</span>
+    <button class="primary" id="addPerson" type="button">Add a person</button>
+  </div>
+  <div class="grid" id="grid"></div>
+</main>
+<footer>Keep this link in the family. Purchases are anonymous, and your own list never shows what's been bought.</footer>
+
+<dialog id="dlgPerson"><form method="dialog" id="fPerson">
+  <h3 id="pTitle">Add a person</h3>
+  <label class="field"><span>Name</span><input id="pName" maxlength="40" required autocomplete="off"></label>
+  <div class="actions"><button class="ghost" value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Save</button></div>
+</form></dialog>
+
+<dialog id="dlgItem"><form method="dialog" id="fItem">
+  <h3 id="iTitle">Add a wish</h3>
+  <label class="field"><span>What is it?</span><input id="iName" maxlength="120" required autocomplete="off" placeholder="Wool hiking socks, size M"></label>
+  <label class="field"><span>Link (optional)</span><input id="iUrl" maxlength="1000" inputmode="url" autocomplete="off" placeholder="https://…"></label>
+  <label class="field"><span>Notes (optional)</span><input id="iNotes" maxlength="200" autocomplete="off" placeholder="Size, color, any store is fine…"></label>
+  <div class="actions"><button class="ghost" value="cancel" formnovalidate>Cancel</button><button class="primary" value="ok">Save</button></div>
+</form></dialog>
+
+<dialog id="dlgConfirm"><form method="dialog">
+  <h3 id="cTitle">Are you sure?</h3>
+  <p id="cBody"></p>
+  <div class="actions"><button class="ghost" value="cancel">Cancel</button><button class="primary" value="ok" id="cOk">Yes</button></div>
+</form></dialog>
+
+<dialog id="dlgWho"><form method="dialog">
+  <h3>Who's looking?</h3>
+  <p>Pick your name so we can hide what's been bought from your own list.</p>
+  <div class="picks" id="whoPicks"></div>
+  <div class="actions"><button class="ghost" value="">I'm not on the list</button></div>
+</form></dialog>
+
+<dialog id="dlgCode"><form method="dialog">
+  <h3>Family passcode</h3>
+  <p id="codeMsg"></p>
+  <label class="field"><span>Passcode</span><input id="codeIn" type="password" maxlength="100" autocomplete="current-password" required></label>
+  <div class="actions"><button class="primary" value="ok">Open the lists</button></div>
+</form></dialog>
+
+<script src="/app.js"></script>
+</body>
+</html>
