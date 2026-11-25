@@ -34,9 +34,18 @@ after(async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// Phones and tablets the family uses, held both ways. Touch screens, so nothing can rely on hovering.
+const SCREENS = [
+  { name: 'small phone', viewport: { width: 320, height: 568 }, isMobile: true },
+  { name: 'phone', viewport: { width: 390, height: 844 }, isMobile: true },
+  { name: 'tablet upright', viewport: { width: 820, height: 1180 }, isMobile: true },
+  { name: 'tablet sideways', viewport: { width: 1180, height: 820 }, isMobile: true }
+];
+
 // A family member's device. With a passcode already entered unless told otherwise.
-async function device({ code = CODE, me } = {}) {
-  const ctx = await browser.newContext();
+// Pass a screen from SCREENS to make it a touch phone or tablet; otherwise it's a desktop browser.
+async function device({ code = CODE, me, screen } = {}) {
+  const ctx = await browser.newContext(screen ? { viewport: screen.viewport, isMobile: screen.isMobile, hasTouch: true } : {});
   await ctx.addInitScript(([c, m]) => {
     if (sessionStorage.getItem('seeded')) return; // only before the first load, so reloads keep what the page saved
     sessionStorage.setItem('seeded', '1');
@@ -164,3 +173,65 @@ test('removing a person removes their list for everyone', async () => {
   assert.ok(!(await api('GET', '/api/data')).data.people.some(p => p.name === 'Gus'));
   await page.context().close();
 });
+
+for (const screen of SCREENS) {
+  test(`on a ${screen.name}, the lists fit the screen and every control is big enough to tap`, async () => {
+    const me = await person(`Ivy ${screen.name}`, ['Mittens']);
+    await person(`Uncle Bartholomew-Fitzgerald ${screen.name}`);
+    await api('POST', '/api/items', { personId: me, title: 'A very long wish for a cast iron skillet with a lid and a matching trivet', url: 'https://www.example-store-with-a-very-long-domain-name.com/products/skillet?ref=abcdefghijklmnopqrstuvwxyz0123456789', notes: 'Any colour except orange' });
+    const page = await device({ me, screen });
+    await card(page, `Ivy ${screen.name}`).waitFor();
+
+    const sideways = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    assert.strictEqual(sideways, false, 'the page should not scroll sideways');
+
+    // Links inside a wish's title are text, so they're exempt; every other control needs a 40px finger target.
+    const tooSmall = await page.locator('button, select, .it-act a').evaluateAll(els => els
+      .filter(e => e.offsetParent)
+      .map(e => ({ what: (e.getAttribute('aria-label') || e.textContent).trim(), ...e.getBoundingClientRect().toJSON() }))
+      .filter(r => r.height < 40 || r.width < 40)
+      .map(r => `${r.what} (${Math.round(r.width)}x${Math.round(r.height)})`));
+    assert.deepStrictEqual(tooSmall, []);
+
+    // There's no hover on a touch screen, so rename and remove must already be showing.
+    const tools = card(page, `Ivy ${screen.name}`).getByRole('button', { name: `Rename Ivy ${screen.name}` });
+    assert.strictEqual(await tools.evaluate(e => getComputedStyle(e.parentElement).opacity), '1');
+
+    // Phones zoom the page into any field whose text is under 16px, which leaves people stuck zoomed in.
+    await card(page, `Ivy ${screen.name}`).getByRole('button', { name: '+ Add a wish' }).tap();
+    const sizes = await page.getByRole('dialog', { name: 'Add a wish' }).locator('input').evaluateAll(els => els.map(e => parseFloat(getComputedStyle(e).fontSize)));
+    assert.ok(sizes.every(s => s >= 16), `form fields should be at least 16px, got ${sizes}`);
+    await page.context().close();
+  });
+
+  test(`on a ${screen.name}, a wish can be added and a gift marked bought by tapping`, async () => {
+    const me = await person(`Jo ${screen.name}`);
+    await person(`Kit ${screen.name}`, ['Board game']);
+    const page = await device({ me, screen });
+
+    await card(page, `Jo ${screen.name}`).getByRole('button', { name: '+ Add a wish' }).tap();
+    const dlg = page.getByRole('dialog', { name: 'Add a wish' });
+    await dlg.getByLabel('What is it?').fill('Puzzle');
+    await dlg.getByRole('button', { name: 'Save' }).tap();
+    await wish(page, `Jo ${screen.name}`, 'Puzzle').waitFor();
+
+    await wish(page, `Kit ${screen.name}`, 'Board game').getByRole('button', { name: 'I bought this' }).tap();
+    await page.getByRole('dialog', { name: 'Mark as bought?' }).getByRole('button', { name: 'Yes, I bought it' }).tap();
+    await wish(page, `Kit ${screen.name}`, 'Board game').getByText("Someone's got this").waitFor();
+    await page.context().close();
+  });
+}
+
+// Known gap, kept visible until it's fixed: a centred dialog sits under the on-screen keyboard, hiding Save.
+// Remove "todo" once dialogs sit near the top on phones.
+for (const screen of SCREENS.filter(s => s.viewport.width < 600)) {
+  test(`on a ${screen.name}, dialogs sit near the top so the keyboard can't cover Save`, { todo: 'dialogs are still centred on phones' }, async () => {
+    const me = await person(`Lu ${screen.name}`);
+    const page = await device({ me, screen });
+    await card(page, `Lu ${screen.name}`).getByRole('button', { name: '+ Add a wish' }).tap();
+    const save = await page.getByRole('dialog', { name: 'Add a wish' }).getByRole('button', { name: 'Save' }).boundingBox();
+    await page.context().close();
+    // A phone keyboard takes roughly the bottom 45% of the screen.
+    assert.ok(save.y + save.height < screen.viewport.height * 0.55, `Save ends at ${Math.round(save.y + save.height)}px of ${screen.viewport.height}px`);
+  });
+}

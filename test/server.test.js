@@ -69,7 +69,7 @@ test('HEAD requests get the same answer as GET, for uptime monitors', async () =
 });
 
 test('fonts are cached by browsers, while the page itself always comes fresh', async () => {
-  assert.match((await fetch(base + '/fonts/figtree-latin.woff2')).headers.get('cache-control'), /max-age=31536000/);
+  assert.match((await fetch(base + '/fonts/fraunces-latin.woff2')).headers.get('cache-control'), /max-age=31536000/);
   assert.strictEqual((await fetch(base + '/')).headers.get('cache-control'), 'no-store');
 });
 

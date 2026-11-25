@@ -205,10 +205,9 @@ const STATIC = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/index.html': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
-  '/fonts/figtree-latin.woff2': ['fonts/figtree-latin.woff2', 'font/woff2'],
-  '/fonts/figtree-latin-ext.woff2': ['fonts/figtree-latin-ext.woff2', 'font/woff2'],
-  '/fonts/youngserif-latin.woff2': ['fonts/youngserif-latin.woff2', 'font/woff2'],
-  '/fonts/youngserif-latin-ext.woff2': ['fonts/youngserif-latin-ext.woff2', 'font/woff2']
+  '/fonts/fraunces-latin.woff2': ['fonts/fraunces-latin.woff2', 'font/woff2'],
+  '/fonts/fraunces-latin-ext.woff2': ['fonts/fraunces-latin-ext.woff2', 'font/woff2'],
+  '/fonts/fraunces-italic-latin.woff2': ['fonts/fraunces-italic-latin.woff2', 'font/woff2']
 };
 
 const SECURITY_HEADERS = {

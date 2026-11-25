@@ -27,17 +27,6 @@ async function api(method, path, body) {
   return j;
 }
 
-// garland baubles
-{
-  const cols = ['#c8102e','#f2c14e','#ffffff','#2f8f63'];
-  let g = '';
-  for (let i = 0; i < 16; i++) {
-    const x = 37 + i * 75, t = (x % 300) / 300, y = 6 + 34 * Math.sin(Math.PI * t) * 0.5 + 2;
-    g += `<line x1="${x}" y1="${y - 4}" x2="${x}" y2="${y + 4}" stroke="#2f6b4f" stroke-width="2"/><circle cx="${x}" cy="${y + 11}" r="7" fill="${cols[i % 4]}"/><circle cx="${x - 2}" cy="${y + 9}" r="2" fill="rgba(255,255,255,.6)"/>`;
-  }
-  $('baubles').innerHTML = g;
-}
-
 function safeUrl(u) {
   u = String(u || '').trim();
   if (!u) return '';
@@ -115,11 +104,11 @@ function render() {
   if (!loaded) return;
   if (!people.length) {
     $('hint').textContent = '';
-    grid.style.display = 'block';
+    grid.classList.add('none');
     grid.innerHTML = `<div class="welcome"><h2>Let's get the lists going</h2><p>Start by adding each person in the family. Then everyone can add their own wishes.</p><button class="primary" type="button" data-act="add-person">Add the first person</button></div>`;
     return;
   }
-  grid.style.display = '';
+  grid.classList.remove('none');
   const total = items.length;
   $('hint').textContent = `${people.length} ${people.length === 1 ? 'list' : 'lists'} · ${total} ${total === 1 ? 'wish' : 'wishes'}${me ? ' · your list is first' : ''}`;
 
@@ -132,15 +121,14 @@ function render() {
     const count = its.length === 0 ? 'No wishes yet' : mine ? `${its.length} ${its.length === 1 ? 'wish' : 'wishes'}` : `${left} of ${its.length} still available`;
     const list = its.length ? `<ul>${its.map(i => itemHTML(i, mine)).join('')}</ul>` : `<div class="empty">${mine ? "Add a few things you'd love." : 'Nothing here yet. Give them a nudge!'}</div>`;
     return `<section class="card${mine ? ' mine' : ''}" data-person="${esc(p.id)}">
-      <div class="chead"><div class="tag" aria-hidden="true">${esc((p.name || '?').trim().charAt(0).toUpperCase())}</div>
-        <div><h2>${esc(p.name)}${mine ? ' (you)' : ''}</h2><div class="count">${count}</div></div>
-        <div class="tools"><button class="icon" type="button" data-act="edit-person" title="Rename" aria-label="Rename ${esc(p.name)}">${svgPen}</button><button class="icon" type="button" data-act="del-person" title="Remove person" aria-label="Remove ${esc(p.name)}">${svgBin}</button></div>
+      <div class="chead"><div class="who"><h2>${esc(p.name)}${mine ? ' (you)' : ''}</h2><span class="count">${count}</span></div>
+        <div class="tools"><button class="icon" type="button" data-act="edit-person" title="Rename ${esc(p.name)}" aria-label="Rename ${esc(p.name)}">${svgPen}</button><button class="icon" type="button" data-act="del-person" title="Remove ${esc(p.name)}" aria-label="Remove ${esc(p.name)}">${svgBin}</button></div>
       </div>
       ${mine ? "<div class=\"mynote\">This is your list, so we're keeping purchases a surprise.</div>" : ''}
       ${list}
       <div class="cfoot"><button class="add" type="button" data-act="add-item">+ Add a wish${mine ? '' : ' for ' + esc(p.name)}</button></div>
     </section>`;
-  }).join('');
+  }).join('') + '<button class="add-card" type="button" data-act="add-person">+ Add a person</button>';
   refocus(keep);
 }
 
@@ -164,10 +152,11 @@ function itemHTML(i, mine) {
   const title = url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(i.title)}</a>` : esc(i.title);
   const meta = [i.notes ? esc(i.notes) : '', url ? esc(host(url)) : ''].filter(Boolean).join(' · ');
   let act;
-  if (mine) act = `<button class="link" type="button" data-act="edit-item">Edit</button><button class="link" type="button" data-act="del-item">Remove</button>`;
+  const edit = `<button class="icon" type="button" data-act="edit-item" title="Edit" aria-label="Edit ${esc(i.title)}">${svgPen}</button>`;
+  if (mine) act = edit + `<button class="icon" type="button" data-act="del-item" title="Remove" aria-label="Remove ${esc(i.title)}">${svgBin}</button>`;
   else if (taken) act = `<span class="ribbon">★ Someone's got this</span><button class="link" type="button" data-act="unbuy">Undo</button>`;
-  else act = `<button class="buy" type="button" data-act="buy">I bought this</button><button class="link" type="button" data-act="edit-item">Edit</button>`;
-  return `<li class="item${taken ? ' taken' : ''}" data-item="${esc(i.id)}"><div class="it-title">${title}</div>${meta ? `<div class="it-meta">${meta}</div>` : ''}<div class="it-act">${act}</div></li>`;
+  else act = `<button class="buy" type="button" data-act="buy">I bought this</button>` + edit;
+  return `<li class="item${taken ? ' taken' : ''}" data-item="${esc(i.id)}"><div class="it-body"><div class="it-title">${title}</div>${meta ? `<div class="it-meta">${meta}</div>` : ''}</div><div class="it-act">${act}</div></li>`;
 }
 
 /* ---------- dialogs ---------- */
@@ -239,7 +228,6 @@ function checkUrl() {
 }
 $('iUrl').addEventListener('input', checkUrl);
 
-$('addPerson').addEventListener('click', () => openPerson(null));
 document.addEventListener('click', async ev => {
   const b = ev.target.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act;
