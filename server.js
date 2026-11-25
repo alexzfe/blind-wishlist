@@ -8,6 +8,7 @@
 //                A daily copy goes in a "backups" folder next to it (last 14 days kept).
 //   FAMILY_CODE  A shared passcode. If set, the page asks for it once per device
 //                and nothing can be read or changed without it.
+//   NODE_ENV     "production" refuses to start without FAMILY_CODE (the Docker image sets it).
 
 'use strict';
 const http = require('node:http');
