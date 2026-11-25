@@ -328,21 +328,29 @@ test('a personal link signs its person in once, and a forwarded copy no longer w
   await rexPage.getByText('already signed in as Rex').waitFor();
   assert.strictEqual(await banner(rexPage).locator('strong').textContent(), 'Rex');
 
-  // Quinn's device doesn't have the passcode yet: the link waits until it's entered.
+  // Quinn's new phone doesn't have the passcode: the link signs it in anyway, without asking.
   const page = await device({ code: '' });
   await page.goto(base + '/?link=' + link);
-  const code = page.getByRole('dialog', { name: 'Family passcode' });
-  await code.getByLabel('Passcode').fill(CODE);
-  await code.getByRole('button', { name: 'Open the lists' }).click();
   await banner(page).getByText('Quinn', { exact: true }).waitFor();
+  assert.ok(await page.getByRole('dialog', { name: 'Family passcode' }).isHidden());
   assert.ok(await who(page).isHidden());
   assert.strictEqual(new URL(page.url()).search, '', 'the link is tidied out of the address bar');
+  await page.reload(); // the phone remembers the passcode, so it stays signed in
+  await banner(page).getByText('Quinn', { exact: true }).waitFor();
 
   // The same link opened on someone else's new device signs nobody in.
   const other = await device();
   await other.goto(base + '/?link=' + link);
   await who(other).getByText('That personal link was already used').waitFor();
-  for (const p of [page, other, rexPage]) await p.context().close();
+
+  // And a forwarded copy on a phone without the passcode still has to ask for it.
+  const stranger = await device({ code: '' });
+  await stranger.goto(base + '/?link=' + link);
+  const code = stranger.getByRole('dialog', { name: 'Family passcode' });
+  await code.getByLabel('Passcode').fill(CODE);
+  await code.getByRole('button', { name: 'Open the lists' }).click();
+  await who(stranger).getByText('That personal link was already used').waitFor();
+  for (const p of [page, other, rexPage, stranger]) await p.context().close();
 });
 
 test("a card's personal link stays the same until it is used", async () => {
