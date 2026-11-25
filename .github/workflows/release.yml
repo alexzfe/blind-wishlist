@@ -1,0 +1,75 @@
+# From infra/templates/app-release.yml, for the `wishlist` entry in infra/sites.yml.
+#
+#   PR            -> test
+#   push to main  -> test, build ghcr.io/<repo>:<sha>, deploy to staging
+#   push tag v*   -> deploy the image already built for that commit to prod, then cut a GitHub Release
+#
+# Prod never rebuilds: the tag points at a commit main already built and staging already ran.
+name: release
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  test:
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # No packages to install: the runner's Node runs the node:test suite.
+      - run: npm test
+
+  build:
+    if: github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+
+  staging:
+    needs: build
+    uses: alexzfe/infra/.github/workflows/deploy-app.yml@main
+    with:
+      app: wishlist
+      env: staging
+      tag: ${{ github.sha }}
+      url: https://wishlist-staging.xlobax.com
+    secrets: inherit
+
+  prod:
+    if: github.ref_type == 'tag'
+    uses: alexzfe/infra/.github/workflows/deploy-app.yml@main
+    with:
+      app: wishlist
+      env: prod
+      tag: ${{ github.sha }}
+      url: https://wishlist.xlobax.com
+    secrets: inherit
+
+  release:
+    needs: prod
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
