@@ -13,6 +13,16 @@ FAMILY_CODE="pick-a-passcode" node server.js
 
 Then open http://localhost:3000.
 
+## Who's who
+
+Each phone, tablet or computer remembers who is using it. The first time someone opens the lists there, after the passcode, a full-screen "Who are you?" asks them to tap their name or write a new one, and to confirm it. The top of the page always says who they are, with a "Not you?" button to switch. Purchases are hidden from your own list, so being signed in as the right person matters.
+
+### Personal links (optional)
+
+To spare someone the "Who are you?" step, tap the link icon on their card and send them the link it shows. The first device to open it is signed in as that person. Then the link stops working, so a forwarded copy can't sign anyone else in. If the wrong person opens it first, the right person sees "already used" and can tap their name or ask for a new link. A device that already knows who it is ignores personal links, so a link opened there by mistake stays unused.
+
+The link doesn't include the family passcode, so they still enter that once. Until a link is used, the button keeps showing the same one, and after it's used the button makes a new one. Opening a link in a chat app's preview doesn't use it up.
+
 ## Settings
 
 All settings are optional environment variables.

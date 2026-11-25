@@ -69,8 +69,28 @@ test('HEAD requests get the same answer as GET, for uptime monitors', async () =
 });
 
 test('fonts are cached by browsers, while the page itself always comes fresh', async () => {
-  assert.match((await fetch(base + '/fonts/figtree-latin.woff2')).headers.get('cache-control'), /max-age=31536000/);
+  assert.match((await fetch(base + '/fonts/fraunces-latin.woff2')).headers.get('cache-control'), /max-age=31536000/);
   assert.strictEqual((await fetch(base + '/')).headers.get('cache-control'), 'no-store');
+});
+
+test('the icon for phone home screens and browser tabs is served', async () => {
+  const r = await fetch(base + '/icon.png');
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.headers.get('content-type'), 'image/png');
+});
+
+test('a personal link works once, and asking for it again before then gives the same link', async () => {
+  const h = { 'Content-Type': 'application/json', 'X-Family-Code': CODE };
+  const post = (p, body) => fetch(base + p, { method: 'POST', headers: h, body: JSON.stringify(body || {}) });
+  const { id } = await (await post('/api/people', { name: 'Rose' })).json();
+  const { link } = await (await post(`/api/people/${id}/link`)).json();
+  assert.strictEqual((await (await post(`/api/people/${id}/link`)).json()).link, link);
+  assert.ok(!JSON.stringify(await (await fetch(base + '/api/data', { headers: h })).json()).includes(link), 'the secret is not shown to everyone');
+
+  const first = await post(`/api/links/${link}`);
+  assert.strictEqual((await first.json()).personId, id);
+  assert.strictEqual((await post(`/api/links/${link}`)).status, 410);
+  assert.notStrictEqual((await (await post(`/api/people/${id}/link`)).json()).link, link, 'a used link is replaced by a new one');
 });
 
 test('in production the server refuses to start without a passcode', async () => {
