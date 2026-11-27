@@ -28,13 +28,15 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 
 /* ---------- storage ---------- */
 
-let db = { people: [], items: [] };
+// gotGift: for each viewer, the people they've already got a gift for. Private: each viewer is only ever sent their own.
+let db = { people: [], items: [], gotGift: {} };
 
 function load() {
   try {
     const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     db.people = Array.isArray(parsed.people) ? parsed.people : [];
     db.items = Array.isArray(parsed.items) ? parsed.items : [];
+    db.gotGift = parsed.gotGift && typeof parsed.gotGift === 'object' && !Array.isArray(parsed.gotGift) ? parsed.gotGift : {}; // older files have none
     console.log(`Loaded ${db.people.length} people and ${db.items.length} wishes from ${DATA_FILE}`);
   } catch (e) {
     if (e.code !== 'ENOENT') { console.error(`Could not read ${DATA_FILE}:`, e.message); process.exit(1); }
@@ -71,10 +73,16 @@ function save() {
   fs.renameSync(tmp, DATA_FILE);
 }
 
-function snapshot() {
+// Who this viewer has already got a gift for. Object.hasOwn, so an id like "__proto__" finds nothing.
+function giftsOf(viewer) {
+  return Object.hasOwn(db.gotGift, viewer) && Array.isArray(db.gotGift[viewer]) ? db.gotGift[viewer] : [];
+}
+
+function snapshot(viewer) {
   return {
     people: db.people.map(p => ({ id: p.id, name: p.name, createdAt: p.createdAt })),
-    items: db.items.map(i => ({ id: i.id, personId: i.personId, title: i.title, url: i.url, notes: i.notes, purchased: !!i.purchased, createdAt: i.createdAt }))
+    items: db.items.map(i => ({ id: i.id, personId: i.personId, title: i.title, url: i.url, notes: i.notes, purchased: !!i.purchased, createdAt: i.createdAt })),
+    gotGift: [...giftsOf(viewer)]
   };
 }
 
@@ -113,51 +121,53 @@ function itemFields(b) {
 const LINK_USE = /^\/api\/links\/([\w-]+)$/;
 
 const routes = [
-  ['GET', /^\/api\/data$/, () => ({ data: snapshot() })],
+  ['GET', /^\/api\/data$/, (b, id, v) => ({ data: snapshot(v) })],
 
-  ['POST', /^\/api\/people$/, (b) => {
+  ['POST', /^\/api\/people$/, (b, _, v) => {
     const name = clean(b.name, 40);
     if (!name) throw new HttpError(400, 'Please enter a name.');
     if (db.people.length >= 200) throw new HttpError(400, 'That is a lot of people! Remove some before adding more.');
     const id = crypto.randomUUID();
     db.people.push({ id, name, createdAt: Date.now() });
     save();
-    return { data: snapshot(), id };
+    return { data: snapshot(v), id };
   }],
 
-  ['PATCH', /^\/api\/people\/([\w-]+)$/, (b, id) => {
+  ['PATCH', /^\/api\/people\/([\w-]+)$/, (b, id, v) => {
     const name = clean(b.name, 40);
     if (!name) throw new HttpError(400, 'Please enter a name.');
     needPerson(id).name = name;
     save();
-    return { data: snapshot() };
+    return { data: snapshot(v) };
   }],
 
-  ['DELETE', /^\/api\/people\/([\w-]+)$/, (b, id) => {
+  ['DELETE', /^\/api\/people\/([\w-]+)$/, (b, id, v) => {
     db.items = db.items.filter(i => i.personId !== id);
+    delete db.gotGift[id];
+    for (const k of Object.keys(db.gotGift)) db.gotGift[k] = giftsOf(k).filter(x => x !== id);
     db.people = db.people.filter(p => p.id !== id);
     save();
-    return { data: snapshot() };
+    return { data: snapshot(v) };
   }],
 
-  ['POST', /^\/api\/items$/, (b) => {
+  ['POST', /^\/api\/items$/, (b, id, v) => {
     needPerson(String(b.personId || ''));
     if (db.items.length >= 5000) throw new HttpError(400, 'The lists are full. Remove some old wishes first.');
     db.items.push({ id: crypto.randomUUID(), personId: String(b.personId), ...itemFields(b), purchased: false, createdAt: Date.now() });
     save();
-    return { data: snapshot() };
+    return { data: snapshot(v) };
   }],
 
-  ['PATCH', /^\/api\/items\/([\w-]+)$/, (b, id) => {
+  ['PATCH', /^\/api\/items\/([\w-]+)$/, (b, id, v) => {
     Object.assign(needItem(id), itemFields(b));
     save();
-    return { data: snapshot() };
+    return { data: snapshot(v) };
   }],
 
-  ['DELETE', /^\/api\/items\/([\w-]+)$/, (b, id) => {
+  ['DELETE', /^\/api\/items\/([\w-]+)$/, (b, id, v) => {
     db.items = db.items.filter(i => i.id !== id);
     save();
-    return { data: snapshot() };
+    return { data: snapshot(v) };
   }],
 
   // A personal link signs one device in as this person, once. Until it's used, asking again gives the same link,
@@ -177,14 +187,24 @@ const routes = [
     return { personId: p.id, code: FAMILY_CODE };
   }],
 
+  // "I've got a gift for this person": a private check, kept for the viewer only.
+  ['POST', /^\/api\/people\/([\w-]+)\/got-gift$/, (b, id, v) => {
+    needPerson(v); needPerson(id);
+    if (id === v) throw new HttpError(400, "That's your own list.");
+    const rest = giftsOf(v).filter(x => x !== id);
+    db.gotGift[v] = b.value === true ? [...rest, id] : rest;
+    save();
+    return { data: snapshot(v) };
+  }],
+
   // Marks bought / not bought. Nothing about who did it is stored.
-  ['POST', /^\/api\/items\/([\w-]+)\/purchased$/, (b, id) => {
+  ['POST', /^\/api\/items\/([\w-]+)\/purchased$/, (b, id, v) => {
     const it = needItem(id);
     const value = b.value === true;
-    if (value && it.purchased) return { data: snapshot(), already: true };
+    if (value && it.purchased) return { data: snapshot(v), already: true };
     it.purchased = value;
     save();
-    return { data: snapshot(), already: false };
+    return { data: snapshot(v), already: false };
   }]
 ];
 
@@ -282,7 +302,9 @@ const server = http.createServer(async (req, res) => {
         const m = p.match(re);
         if (m && req.method === method) {
           const body = method === 'GET' ? {} : await readBody(req);
-          return send(res, 200, handler(body, m[1]));
+          // Who is asking, as the page knows them ("me"). Family trust: it only decides whose private checks come back.
+          const viewer = clean(req.headers['x-viewer'], 100);
+          return send(res, 200, handler(body, m[1], viewer));
         }
       }
       throw new HttpError(404, 'Not found.');
