@@ -59,6 +59,19 @@ main{max-width:1180px;margin:0 auto;padding:20px max(5vw,16px) 64px}
 .mynote{margin:-4px 20px 8px;color:var(--soft);font-size:14px;font-style:italic;text-wrap:pretty}
 /* Rename and remove are rare: on devices with a mouse they appear when the card is hovered or focused. */
 @media (hover:hover){.chead .tools{opacity:0;transition:opacity .15s ease-out}.card:hover .tools,.card:focus-within .tools{opacity:1}}
+/* "Got a gift": a private check on everyone else's card. Checked people fold to a slim card below a divider. */
+.got{flex:none;min-width:44px;min-height:44px;padding:0;background:none;border:0;display:grid;place-items:center;color:var(--soft)}
+.got circle{fill:none;stroke:currentColor;stroke-width:1.5}
+.got path{fill:none;stroke:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.got:hover{color:var(--green)}
+.got[aria-pressed=true] circle{fill:var(--green);stroke:var(--green)}
+.got[aria-pressed=true] path{stroke:#fff}
+.fold{font-size:24px;line-height:1}
+.card.folded .chead{padding-block:6px}
+.card.folded .who{cursor:pointer}
+.card.folded h2{font-size:22px}
+.grid>.gotline{column-span:all;display:flex;align-items:center;gap:14px;margin:16px 0 20px;font-family:inherit;font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--soft)}
+.gotline::before,.gotline::after{content:"";flex:1;border-top:1px solid var(--line)}
 ul{list-style:none;margin:0;padding:0 10px}
 /* When a row is too narrow, its buttons drop below the wish instead of squeezing it. */
 li.item{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:10px;border-top:1px solid var(--line)}

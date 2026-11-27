@@ -4,6 +4,9 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const store = {get(k){try{return localStorage.getItem(k)}catch{return null}}, set(k,v){try{localStorage.setItem(k,v)}catch{}}};
 
 let people = [], items = [], loaded = false, busy = 0;
+// "Got a gift": the people this viewer already has a gift for (from the server, theirs alone), and which of those
+// folded cards are opened up right now (this page only, so a reload folds them again).
+let gotGift = new Set(), opened = new Set();
 let me = store.get('wishlist.me') || '';
 // Admin mode shows the rare buttons that change other people's things: rename, remove, and adding or editing someone else's wishes.
 // It's to avoid accidents and clutter, not security: the server still accepts any change from anyone with the passcode.
@@ -24,7 +27,7 @@ class AuthError extends Error {}
 async function api(method, path, body) {
   const r = await fetch(path, {
     method,
-    headers: { 'Content-Type': 'application/json', 'X-Family-Code': code },
+    headers: { 'Content-Type': 'application/json', 'X-Family-Code': code, 'X-Viewer': me }, // X-Viewer: whose private checks come back
     body: body ? JSON.stringify(body) : undefined
   });
   let j = {};
@@ -45,16 +48,17 @@ function host(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } cat
 function showErr(msg) { $('status').textContent = msg || ''; }
 
 function apply(data) {
-  people = data.people || []; items = data.items || []; loaded = true;
+  people = data.people || []; items = data.items || []; gotGift = new Set(data.gotGift || []); loaded = true;
   render();
 }
 
 // Send a change to the server, then redraw with the fresh lists it returns.
 async function write(method, path, body) {
   showErr(''); busy++; saves++; document.body.classList.add('busy');
+  const asked = me;
   try {
     const r = await api(method, path, body);
-    if (r && r.data) apply(r.data);
+    if (r && r.data && me === asked) apply(r.data); // drawn for whoever was "me" when it was sent; after a switch, the refresh draws instead
     return r;
   } catch (e) {
     if (e instanceof AuthError) { showErr("That change wasn't saved because the passcode is needed. Enter it, then try again."); askCode(true); }
@@ -84,11 +88,11 @@ async function useLink(people) {
 }
 
 async function refresh() {
-  const before = saves;
+  const before = saves, asked = me;
   try {
     const data = (await api('GET', '/api/data')).data;
-    if (saves !== before) return; // a save finished meanwhile and already drew newer lists
-    if (linkToken) await useLink(data.people);
+    if (saves !== before || me !== asked) return; // a save finished meanwhile, or this device switched person (that refreshes again)
+    if (linkToken && await useLink(data.people)) return refresh(); // signed in by the link: fetch again, with their checks
     apply(data);
   }
   catch (e) {
@@ -125,12 +129,14 @@ const svgPen = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stro
 const svgBin = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>';
 const svgLink = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>';
 
+const svgCheck = '<svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><circle cx="15" cy="15" r="13"/><path d="M9.5 15.5l4 4 7-8"/></svg>';
+
 const nameOf = id => (people.find(p => p.id === id) || {}).name;
 
 function render() {
   $('adminOff').hidden = !admin;
   if (!loaded) return;
-  if (me && !nameOf(me)) { me = ''; store.set('wishlist.me', ''); }
+  if (me && !nameOf(me)) { me = ''; store.set('wishlist.me', ''); gotGift.clear(); opened.clear(); }
   $('meBar').hidden = !me;
   if (me) { $('meName').textContent = nameOf(me); $('meChange').textContent = `Not ${nameOf(me)}? Switch`; }
   else askWho();
@@ -141,16 +147,25 @@ function render() {
   $('hint').textContent = `${people.length} ${people.length === 1 ? 'list' : 'lists'} · ${total} ${total === 1 ? 'wish' : 'wishes'}${me ? ' · your list is first' : ''}`;
 
   const keep = focusKey();
-  const ordered = [...people].sort((a, b) => (b.id === me) - (a.id === me) || a.name.localeCompare(b.name));
-  grid.innerHTML = ordered.map(p => {
+  // Your list first, then everyone you're still shopping for, then (below a divider) those you've got a gift for. Alphabetical within each.
+  const got = p => !!p && p.id !== me && gotGift.has(p.id);
+  const ordered = [...people].sort((a, b) => (b.id === me) - (a.id === me) || got(a) - got(b) || a.name.localeCompare(b.name));
+  const firstGot = ordered.findIndex(got);
+  grid.innerHTML = ordered.map((p, n) => {
     const mine = p.id === me;
+    const folded = got(p) && !opened.has(p.id);
+    const divider = n === firstGot ? '<h2 class="gotline">Got a gift</h2>' : '';
+    const fold = got(p) ? `<button class="icon fold" type="button" data-act="fold" aria-expanded="${!folded}" aria-label="${esc(p.name)}'s list" title="${folded ? 'Show' : 'Hide'} list">${folded ? '+' : '−'}</button>` : '';
+    const check = mine || !me ? '' : `<button class="got" type="button" data-act="got" aria-pressed="${got(p)}" aria-label="Got a gift for ${esc(p.name)}" title="Got a gift for ${esc(p.name)}">${svgCheck}</button>`;
+    // Folded: just the name (tap it to open), the +, and the check.
+    if (folded) return divider + `<section class="card folded" data-person="${esc(p.id)}"><div class="chead"><div class="who" data-act="fold"><h2>${esc(p.name)}</h2></div>${fold}${check}</div></section>`;
     const its = items.filter(i => i.personId === p.id).sort((a, b) => mine ? sortBy(a, b) : ((a.purchased ? 1 : 0) - (b.purchased ? 1 : 0)) || sortBy(a, b));
     const left = its.filter(i => !i.purchased).length;
     const count = its.length === 0 ? 'No wishes yet' : mine ? `${its.length} ${its.length === 1 ? 'wish' : 'wishes'}` : `${left} of ${its.length} still available`;
     const list = its.length ? `<ul>${its.map(i => itemHTML(i, mine)).join('')}</ul>` : `<div class="empty">${mine ? "Add a few things you'd love." : 'Nothing here yet. Give them a nudge!'}</div>`;
-    return `<section class="card${mine ? ' mine' : ''}" data-person="${esc(p.id)}">
+    return divider + `<section class="card${mine ? ' mine' : ''}" data-person="${esc(p.id)}">
       <div class="chead"><div class="who"><h2>${esc(p.name)}${mine ? ' (you)' : ''}</h2><span class="count">${count}</span></div>
-        <div class="tools"><button class="icon" type="button" data-act="link-person" title="Personal link for ${esc(p.name)}" aria-label="Personal link for ${esc(p.name)}">${svgLink}</button>${admin ? `<button class="icon" type="button" data-act="edit-person" title="Rename ${esc(p.name)}" aria-label="Rename ${esc(p.name)}">${svgPen}</button><button class="icon" type="button" data-act="del-person" title="Remove ${esc(p.name)}" aria-label="Remove ${esc(p.name)}">${svgBin}</button>` : ''}</div>
+        <div class="tools"><button class="icon" type="button" data-act="link-person" title="Personal link for ${esc(p.name)}" aria-label="Personal link for ${esc(p.name)}">${svgLink}</button>${admin ? `<button class="icon" type="button" data-act="edit-person" title="Rename ${esc(p.name)}" aria-label="Rename ${esc(p.name)}">${svgPen}</button><button class="icon" type="button" data-act="del-person" title="Remove ${esc(p.name)}" aria-label="Remove ${esc(p.name)}">${svgBin}</button>` : ''}</div>${fold}${check}
       </div>
       ${mine ? "<div class=\"mynote\">This is your list, so we're keeping purchases a surprise.</div>" : ''}
       ${list}
@@ -249,7 +264,7 @@ $('sYes').addEventListener('click', async () => {
 $('dlgWho').addEventListener('cancel', e => { if (!me) e.preventDefault(); });
 $('dlgWho').addEventListener('close', () => { if (!me) setTimeout(askWho); });
 $('meChange').addEventListener('click', askWho);
-function setMe(id) { me = id; store.set('wishlist.me', id); render(); }
+function setMe(id) { me = id; store.set('wishlist.me', id); gotGift.clear(); opened.clear(); render(); refresh(); } // the old person's checks go at once; refresh brings the new person's
 
 /* ---------- admin mode ---------- */
 
@@ -345,6 +360,8 @@ document.addEventListener('click', async ev => {
     if (await confirmBox(`Remove ${p.name}?`, `This deletes ${p.name}'s list${n ? ` and all ${n} ${n === 1 ? 'wish' : 'wishes'} on it` : ''} for everyone. It can't be undone.`, 'Remove'))
       write('DELETE', `/api/people/${encodeURIComponent(p.id)}`);
   }
+  else if (act === 'got' && p) { opened.delete(p.id); write('POST', `/api/people/${encodeURIComponent(p.id)}/got-gift`, { value: !gotGift.has(p.id) }); }
+  else if (act === 'fold' && p) { if (!opened.delete(p.id)) opened.add(p.id); render(); }
   else if (act === 'add-item' && p) openItem(p.id, null);
   else if (act === 'edit-item' && it) openItem(it.personId, it);
   else if (act === 'del-item' && it) {

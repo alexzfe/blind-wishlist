@@ -132,3 +132,79 @@ test('the lists survive a restart, and only the last 14 daily backups are kept',
     assert.ok(!left.includes('wishlists-2020-01-01.json') && !left.includes('wishlists-2020-01-02.json'), 'the oldest copies go first');
   } finally { s.proc.kill(); fs.rmSync(d, { recursive: true, force: true }); }
 });
+
+
+/* ---------- "Got a gift" checks ---------- */
+
+// The viewer says who they are with X-Viewer, the same id the page keeps as "me".
+const as = (viewer) => ({ 'Content-Type': 'application/json', 'X-Family-Code': CODE, 'X-Viewer': viewer || '' });
+const dataAs = async (viewer, b = base) => (await (await fetch(b + '/api/data', { headers: as(viewer) })).json()).data;
+const gotGift = (viewer, id, value, b = base) => fetch(b + `/api/people/${id}/got-gift`, { method: 'POST', headers: as(viewer), body: JSON.stringify({ value }) });
+const addPerson = async (name, b = base) => (await (await fetch(b + '/api/people', { method: 'POST', headers: as(''), body: JSON.stringify({ name }) })).json()).id;
+
+test('a "got a gift" check can be set and unset, and setting it twice keeps one', async () => {
+  const ann = await addPerson('Ann'), bob = await addPerson('Bob');
+  const r = await gotGift(ann, bob, true);
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual((await r.json()).data.gotGift, [bob], 'the answer already has the new check');
+  await gotGift(ann, bob, true);
+  assert.deepStrictEqual((await dataAs(ann)).gotGift, [bob]);
+  assert.deepStrictEqual((await (await gotGift(ann, bob, false)).json()).data.gotGift, []);
+  assert.deepStrictEqual((await dataAs(ann)).gotGift, []);
+});
+
+test('each person only ever sees their own checks', async () => {
+  const cat = await addPerson('Cat'), dov = await addPerson('Dov'), eli = await addPerson('Eli');
+  await gotGift(cat, dov, true);
+  await gotGift(eli, cat, true);
+  assert.deepStrictEqual((await dataAs(cat)).gotGift, [dov]);
+  assert.deepStrictEqual((await dataAs(dov)).gotGift, [], 'Dov must not learn Cat has a gift for him');
+  assert.deepStrictEqual((await dataAs(eli)).gotGift, [cat]);
+  assert.deepStrictEqual((await dataAs('')).gotGift, [], 'nobody signed in sees no checks');
+  // Answers to other changes are drawn for their sender too.
+  const r = await fetch(base + '/api/items', { method: 'POST', headers: as(dov), body: JSON.stringify({ personId: dov, title: 'Kite' }) });
+  assert.deepStrictEqual((await r.json()).data.gotGift, []);
+});
+
+test('you cannot check yourself, and checks need a real viewer and a real person', async () => {
+  const fin = await addPerson('Fin');
+  assert.strictEqual((await gotGift(fin, fin, true)).status, 400);
+  assert.strictEqual((await gotGift('', fin, true)).status, 404);
+  assert.strictEqual((await gotGift('no-such-person', fin, true)).status, 404);
+  assert.strictEqual((await gotGift(fin, 'no-such-person', true)).status, 404);
+  assert.strictEqual((await gotGift('__proto__', fin, true)).status, 404);
+});
+
+test('removing a person removes their own checks and every check on them', async () => {
+  const gil = await addPerson('Gil'), hana = await addPerson('Hana'), ida = await addPerson('Ida');
+  await gotGift(gil, hana, true); await gotGift(gil, ida, true);
+  await gotGift(hana, gil, true);
+  await gotGift(ida, hana, true);
+  await fetch(base + `/api/people/${hana}`, { method: 'DELETE', headers: as(gil), body: '{}' });
+  assert.deepStrictEqual((await dataAs(gil)).gotGift, [ida]);
+  assert.deepStrictEqual((await dataAs(ida)).gotGift, []);
+  const saved = JSON.parse(fs.readFileSync(path.join(dir, 'wishlists.json'), 'utf8')).gotGift;
+  assert.ok(!(hana in saved), "Hana's own checks are gone from the file");
+  assert.ok(!JSON.stringify(saved).includes(hana), 'and nobody has a check on her any more');
+});
+
+test('a data file from before checks existed still loads, and checks then work and are saved', async () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'wishlist-test-'));
+  fs.writeFileSync(path.join(d, 'wishlists.json'), JSON.stringify({ people: [{ id: 'p1', name: 'Ana', createdAt: 1 }, { id: 'p2', name: 'Ben', createdAt: 2 }], items: [] }));
+  let s = await start({ FAMILY_CODE: CODE }, d);
+  try {
+    assert.deepStrictEqual((await dataAs('p1', s.base)).gotGift, []);
+    assert.strictEqual((await gotGift('p1', 'p2', true, s.base)).status, 200);
+    s.proc.kill(); await exited(s.proc);
+    s = await start({ FAMILY_CODE: CODE }, d);
+    assert.deepStrictEqual((await dataAs('p1', s.base)).gotGift, ['p2'], 'checks survive a restart');
+  } finally { s.proc.kill(); fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+test('renaming a person keeps the checks on them and the checks they made', async () => {
+  const jo = await addPerson('Jo'), kai = await addPerson('Kai');
+  await gotGift(jo, kai, true); await gotGift(kai, jo, true);
+  await fetch(base + `/api/people/${kai}`, { method: 'PATCH', headers: as(jo), body: JSON.stringify({ name: 'Kai B' }) });
+  assert.deepStrictEqual((await dataAs(jo)).gotGift, [kai]);
+  assert.deepStrictEqual((await dataAs(kai)).gotGift, [jo]);
+});

@@ -328,10 +328,12 @@ test('a personal link signs its person in once, and a forwarded copy no longer w
   await rexPage.getByText('already signed in as Rex').waitFor();
   assert.strictEqual(await banner(rexPage).locator('strong').textContent(), 'Rex');
 
-  // Quinn's new phone doesn't have the passcode: the link signs it in anyway, without asking.
+  // Quinn's new phone doesn't have the passcode: the link signs it in anyway, without asking, and shows Quinn's own checks.
+  await fetch(base + `/api/people/${rex}/got-gift`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Family-Code': CODE, 'X-Viewer': quinn }, body: '{"value":true}' });
   const page = await device({ code: '' });
   await page.goto(base + '/?link=' + link);
   await banner(page).getByText('Quinn', { exact: true }).waitFor();
+  await card(page, 'Rex').getByRole('button', { name: 'Got a gift for Rex', pressed: true }).waitFor();
   assert.ok(await page.getByRole('dialog', { name: 'Family passcode' }).isHidden());
   assert.ok(await who(page).isHidden());
   assert.strictEqual(new URL(page.url()).search, '', 'the link is tidied out of the address bar');
@@ -463,5 +465,75 @@ test('slow taps on "Nobody" start the count again', async () => {
   await nobody(page).click();
   assert.strictEqual(await note(page).textContent(), '');
   assert.deepStrictEqual(await adminButtons(page, 'Bea', 'Yo-yo'), [0, 0, 0, 0]);
+  await page.context().close();
+});
+
+
+/* ---------- "got a gift" checks ---------- */
+
+test('"got a gift" folds a person below everyone else, opens in place, and only you see it', async () => {
+  const me = await person('Lou'); await person('Mae', ['Scarf']); await person('Ned', ['Book']);
+  const ola = await person('Ola');
+  const page = await device({ me, screen: SCREENS[1] });
+  const order = async () => (await page.locator('#grid > *').evaluateAll(els => els.map(e => e.matches('.gotline') ? '|' : (e.querySelector('h2') || {}).textContent)))
+    .filter(n => ['Lou (you)', 'Mae', 'Ned', '|'].includes(n));
+  const check = name => card(page, name).getByRole('button', { name: `Got a gift for ${name}` });
+  const toggle = name => card(page, name).getByRole('button', { name: `${name}'s list` });
+  await wish(page, 'Mae', 'Scarf').waitFor();
+  assert.strictEqual(await card(page, 'Lou').getByRole('button', { name: /Got a gift/ }).count(), 0, 'no check on your own list');
+  assert.strictEqual(await page.locator('.gotline').count(), 0, 'no divider until someone is checked');
+  assert.strictEqual(await check('Mae').getAttribute('aria-pressed'), 'false');
+
+  await check('Mae').tap();
+  await wish(page, 'Mae', 'Scarf').waitFor({ state: 'detached' });
+  assert.strictEqual(await check('Mae').getAttribute('aria-pressed'), 'true');
+  assert.deepStrictEqual(await order(), ['Lou (you)', 'Ned', '|', 'Mae']);
+  assert.strictEqual(await page.locator('.gotline').textContent(), 'Got a gift');
+
+  await toggle('Mae').tap();
+  await wish(page, 'Mae', 'Scarf').waitFor();
+  assert.deepStrictEqual(await order(), ['Lou (you)', 'Ned', '|', 'Mae'], 'opens in place, still at the bottom');
+  assert.strictEqual(await toggle('Mae').getAttribute('aria-expanded'), 'true');
+  await toggle('Mae').tap();
+  await wish(page, 'Mae', 'Scarf').waitFor({ state: 'detached' });
+  await card(page, 'Mae').locator('h2').tap();
+  await wish(page, 'Mae', 'Scarf').waitFor();
+
+  await page.reload();
+  await card(page, 'Mae').waitFor();
+  assert.strictEqual(await wish(page, 'Mae', 'Scarf').count(), 0, 'folded again after a reload, still checked');
+  assert.strictEqual(await check('Mae').getAttribute('aria-pressed'), 'true');
+
+  const olaPage = await device({ me: ola });
+  await wish(olaPage, 'Mae', 'Scarf').waitFor();
+  assert.strictEqual(await card(olaPage, 'Mae').getByRole('button', { name: 'Got a gift for Mae' }).getAttribute('aria-pressed'), 'false', "Lou's check is Lou's alone");
+  await olaPage.context().close();
+
+  await check('Mae').tap();
+  await wish(page, 'Mae', 'Scarf').waitFor();
+  assert.deepStrictEqual(await order(), ['Lou (you)', 'Mae', 'Ned'], 'back up, unfolded, and the divider is gone');
+  await page.context().close();
+});
+
+test("switching person on the same device never shows the last person's checks", async () => {
+  const sam = await person('Sam'), tia = await person('Tia'); await person('Uma', ['Puzzle']);
+  const page = await device({ me: sam });
+  await card(page, 'Uma').getByRole('button', { name: 'Got a gift for Uma' }).click();
+  await wish(page, 'Uma', 'Puzzle').waitFor({ state: 'detached' });
+
+  await banner(page).getByRole('button', { name: 'Not Sam? Switch' }).click();
+  await who(page).getByRole('button', { name: 'Tia', exact: true }).click();
+  // Hold back the refresh for Tia, so what's checked here is the page drawn the moment she's picked.
+  let release; const held = new Promise(r => { release = r; });
+  await page.route('**/api/data', async route => { await held; await route.continue(); });
+  await who(page).getByRole('button', { name: "Yes, that's me" }).click();
+  await banner(page).getByText('Tia', { exact: true }).waitFor();
+  for (const when of ['before the refresh', 'after the refresh']) {
+    await wish(page, 'Uma', 'Puzzle').waitFor();
+    assert.strictEqual(await page.locator('.card.folded').count(), 0, `nothing folded ${when}`);
+    assert.strictEqual(await page.locator('[data-act=got][aria-pressed=true]').count(), 0, `no check pressed ${when}`);
+    assert.strictEqual(await page.locator('.gotline').count(), 0);
+    if (!release.done) { release.done = true; release(); await page.waitForResponse('**/api/data'); }
+  }
   await page.context().close();
 });

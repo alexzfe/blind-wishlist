@@ -25,6 +25,12 @@ To spare someone the "Who are you?" step, tap the link icon on their card and se
 
 The link also stands in for the family passcode, so they don't need to type it: using the link saves the passcode on their device. Once used, the link is worth nothing, so a forwarded copy still has to ask for the passcode. Until a link is used, the button keeps showing the same one, and after it's used the button makes a new one. Opening a link in a chat app's preview doesn't use it up.
 
+## Got a gift
+
+Every card except your own has a round check in its corner. Tap it once you have a gift for that person, from their list or not. Their card folds to a slim line under "Got a gift" at the bottom, so the people you still need to shop for stay at the top. Tap the `+` or their name to open the list again, and tap the check again to un-check.
+
+The checks are private: only you see yours, on any device signed in as you. Nobody else, including the person you checked, can see them.
+
 ## Admin mode
 
 Most of the family only needs their own list and "I bought this" on everyone else's, so that's all the page shows. Renaming or removing a person, and adding or editing wishes on someone else's list, appear only in admin mode.
@@ -131,6 +137,6 @@ If you host it yourself some other way, ignore this file.
 
 - Behind a reverse proxy (Caddy, nginx) the server reads the visitor's address from the end of `X-Forwarded-For`, but only for requests coming from this machine or a private network. Make sure your proxy sets that header; Caddy does by default.
 - Nothing records who marked an item as bought. The data file does show which items are bought, so don't peek at it if you want your own gifts to stay a surprise.
-- The data file also holds any personal links not used yet, so keep it (and the backups) private.
+- The data file also holds any personal links not used yet, and everyone's "Got a gift" checks, so keep it (and the backups) private.
 - Run only **one copy** of the server per data file.
 - Open pages check for other people's changes every 15 seconds, and when you come back to the tab.
